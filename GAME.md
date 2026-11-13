@@ -1,9 +1,9 @@
-# Dossier BAASS · 3D — v0.2.4
+# Dossier BAASS · 3D — v0.2.5
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=1772523
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/ (le `?v=` du SHA sera ajouté après le push)
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `17725238122ab9fd602dae11ff169b3a4f1b0707` (1772523), 13 novembre 2026 (heure de Toronto). La v0.2.3 était `a396e5e62c566f1f7461635c9440b9ccdafc63c2` (a396e5e), docs `417fd16`. La v0.2.2 était `6b679e3`, docs `0ea8b8a`.
-- État : v0.2.4 — le pad de direction vient du module partagé `/workspace/shared/touch-controls/` (copie dans `vendor/touch-controls/`). Mapping inchangé par rapport à la v0.2.3. Rien de visuel n’a changé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : à venir (jeu v0.2.5). La v0.2.4 était `17725238122ab9fd602dae11ff169b3a4f1b0707` (1772523), docs `658c7d5`. La v0.2.3 était `a396e5e`, docs `417fd16`. Un second commit de documentation suit, avec le lien live et les mesures.
+- État : v0.2.5 — le regard (glisser un doigt, souris, stick droit) tourne enfin dans le bon sens ; la rampe cadre la porte du laboratoire et le bandeau dit « Rampe ». Module partagé touch-controls **1.0.1**. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -13,6 +13,45 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+
+## v0.2.5 — regard dans le bon sens, caméra de la rampe (13 nov. 2026)
+
+QA v0.2.4 **FAIL**, bug élevé : le pad allait dans le bon sens, mais **glisser un doigt vers la droite** sur la moitié droite de l’écran tournait la vue vers la **gauche** (la grange rouge venait au centre). Au ranch (yaw = π), `camYaw += 0,54` et le point devant passait en NDC x = **+1,29** (à droite) au lieu d’aller à gauche. Cause : `main.js` faisait `camYaw += ld.dx * 0.006` (et `camYaw += rx * 0.04` pour la manette). Le test officiel `t-joystick.cjs` passait 124/124 en local parce qu’il utilisait le chemin **souris** (parfois avec verrouillage du pointeur, `movementX` de signe trompeur), pas un vrai doigt CDP. Sur le lien en ligne, QA a obtenu 115/124, dont les deux `look.dragRight.turnsRight`. `VERSION` **0.2.5**. Le service worker reste network-first.
+
+### Regard — helper partagé 1.0.1
+
+`/workspace/shared/touch-controls/` passe en **1.0.1** (copie dans `vendor/touch-controls/`). Nouveaux exports :
+
+- `lookDelta(dx, dy, sensYaw, sensPitch)` → `{ yaw, pitch }`. Glisser / stick **à droite** (`dx > 0`) **diminue** le yaw : la vue tourne à droite, un point devant glisse vers la gauche de l’écran. Glisser **vers le haut** (`dy < 0`) diminue le pitch : on regarde en haut (pas d’inversion).
+- `applyLook(yaw, pitch, dx, dy, { sens, sensYaw, sensPitch, minPitch, maxPitch })` applique ces signes et borne le pitch.
+
+Le jeu utilise `applyLook` pour le doigt (`readLook`), la souris, le verrouillage du pointeur et le stick droit. Le pad / WASD / stick gauche est **inchangé** (déjà correct en v0.2.4).
+
+`tests/signs.test.mjs` : **23 / 23 PASS** (dont 7 nouveaux cas pour le regard).
+
+### Rampe
+
+`goto('ramp')` cadrage le plafond et le bandeau disait « LABORATOIRE » (le point [22,5 ; 4] tombait dans la zone lab, et un plafond `LAB_CEIL` pinçait la caméra trop haut par rapport à la pente).
+
+- Nouvelle zone `ZONES.ramp` (**Rampe**, mêmes bornes que `RAMP`), testée **avant** le laboratoire dans `zoneAt`.
+- Caméra de rampe plus courte, regard vers la porte du labo (pitch 0,68, sans le clamp `LAB_CEIL`), sol et porte dans le cadre, bandeau **Rampe**. Ambiance bunker.
+
+### Test `t-joystick.cjs`
+
+Le regard passe par `Input.dispatchTouchEvent` (vrai toucher CDP) sur la moitié droite : après un glissement à droite, le point devant a un NDC x **< 0** ; à gauche, **> 0**. Mêmes assertions pour la souris (sans verrouillage) et une manette Standard émulée. Glisser vers le haut : le pitch diminue. Le clavier attend un vrai déplacement et réessaie jusqu’à deux fois. Plus de repli « monde » : les axes écran suffisent (sur la rampe, si la hauteur change beaucoup, la projection après coup utilise la hauteur d’avant, pour mesurer « vers la porte / le décor » plutôt que « on a descendu le sol »).
+
+Résultat local, **trois exécutions consécutives** : **134 / 134 PASS** chacune (412×915 et 915×412, toutes les zones, passage du menu, cinq tests de regard par orientation, bandeau Rampe, 0 erreur, 0 HTTP ≥ 400).
+
+### Autres tests
+
+`quotes.test.mjs` **PASS** (2/2). `t01.js` 412×915 et 915×412 **PASS**. `t-sw-upgrade.cjs` **PASS** : 0.2.0 → 0.2.5, menu, `__game.version === "0.2.5"`, cache **uniquement** `dossier-baass-3d-v0.2.5` (81 fichiers), 0 erreur, 0 HTTP ≥ 400, bandeau inchangé.
+
+### Mesures live
+
+À venir dans le commit de documentation. Attendues identiques aux vues de jeu de la v0.2.4 (épave paysage **69 / 56 924**).
+
+Bandeau et citations : **inchangés**.
 
 ## v0.2.4 — module partagé de pad tactile (13 nov. 2026)
 

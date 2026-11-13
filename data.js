@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.2.4';
+export const VERSION = '0.2.5';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -121,6 +121,7 @@ export const EVIDENCE = [
 export const ZONES = {
   ranch: { id: 'ranch', name: 'Ranch', x0: -42, x1: -2, z0: -18, z1: 24 },
   hangar: { id: 'hangar', name: 'Hangar', x0: -2, x1: 18.5, z0: -16, z1: 26 },
+  ramp: { id: 'ramp', name: 'Rampe', x0: 19.85, x1: 26.15, z0: 2.08, z1: 5.92 },
   lab: { id: 'lab', name: 'Laboratoire', x0: 18.5, x1: 62, z0: -6, z1: 24 },
   wreck: { id: 'wreck', name: 'Site de l’épave', x0: -28, x1: 8, z0: 28, z1: 62 },
 };

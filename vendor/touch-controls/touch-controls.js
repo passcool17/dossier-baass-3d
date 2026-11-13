@@ -17,7 +17,7 @@
  * Phaser 2D:
  *   screenRelative2D(x, y) returns {x, y} with screen-up as -Y.
  */
-export const VERSION = '1.0.0';
+export const VERSION = '1.0.1';
 
 const DEFAULT_DEADZONE = 0.08;
 const GAMEPAD_DEADZONE = 0.18;
@@ -68,6 +68,41 @@ export function clampAxes(x, y) {
   if (len > 1) return { x: x / len, y: y / len };
   return { x, y };
 }
+
+/**
+ * Look-sign helper. Raw deltas use screen / Standard-gamepad convention:
+ *   drag or stick right = positive dx
+ *   drag or stick down  = positive dy  (screen Y grows downward)
+ *
+ * For the documented third-person camera (yaw around Y, camera at
+ *   (px - sin(yaw)*hd, pz - cos(yaw)*hd)):
+ *   drag right → yaw decreases → view turns right → a point that was
+ *     straight ahead moves LEFT on screen (NDC x decreases).
+ *   drag up (dy < 0) → pitch decreases → look up (non-inverted).
+ *
+ * Through v0.2.4, games that did `camYaw += dx * sens` turned the view
+ * the wrong way with a real finger (QA v0.2.4).
+ */
+export function lookDelta(dx, dy, sensYaw = 1, sensPitch = sensYaw) {
+  return { yaw: -dx * sensYaw, pitch: dy * sensPitch };
+}
+
+/**
+ * Apply a raw look-drag to yaw / pitch and clamp pitch.
+ * @returns {{yaw:number, pitch:number}}
+ */
+export function applyLook(yaw, pitch, dx, dy, opts = {}) {
+  const sy = opts.sensYaw != null ? opts.sensYaw : (opts.sens != null ? opts.sens : 1);
+  const sp = opts.sensPitch != null ? opts.sensPitch : sy;
+  const minP = opts.minPitch != null ? opts.minPitch : -0.9;
+  const maxP = opts.maxPitch != null ? opts.maxPitch : 0.85;
+  const d = lookDelta(dx, dy, sy, sp);
+  return {
+    yaw: yaw + d.yaw,
+    pitch: Math.max(minP, Math.min(maxP, pitch + d.pitch)),
+  };
+}
+
 
 function axisDead(v, dz) {
   return Math.abs(v) > dz ? v : 0;

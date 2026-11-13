@@ -623,7 +623,7 @@ export function createLights(scene) {
   };
 
   L.applyAtmos = function applyAtmos(zone) {
-    const a = ATMOS[zone] || ATMOS.ranch;
+    const a = ATMOS[zone] || ATMOS[zone === 'ramp' ? 'lab' : 'ranch'] || ATMOS.ranch;
     this.zone = zone;
     const q = this.qualityLow;
     const cut = q ? 0.62 : 1;
@@ -639,7 +639,7 @@ export function createLights(scene) {
     this.labFill2.intensity = a.lab2 * (q ? 0.7 : 1);
     this.doorFill.intensity = (a.door || 0) * (q ? 0.7 : 1);
     this.emerFill.intensity = (a.emer || 0) * (q ? 0.65 : 1);
-    if (this.cones) this.cones.visible = !q && zone === 'lab';
+    if (this.cones) this.cones.visible = !q && (zone === 'lab' || zone === 'ramp');
   };
 
   L.applyQuality = function applyQuality(qualityLow) {
@@ -1014,7 +1014,7 @@ const SFX_URLS = {
   amb_hangar: './assets/sfx/amb_hangar.mp3',
   amb_bunker: './assets/sfx/amb_bunker.mp3',
 };
-const ZONE_AMB = { ranch: 'amb_desert', hangar: 'amb_hangar', lab: 'amb_bunker', wreck: 'amb_desert' };
+const ZONE_AMB = { ranch: 'amb_desert', hangar: 'amb_hangar', ramp: 'amb_bunker', lab: 'amb_bunker', wreck: 'amb_desert', entrance: 'amb_hangar' };
 const LOOP_GAIN = {
   amb_desert: 0.22, amb_hangar: 0.18, amb_bunker: 0.2, tr3b_hum: 0.13,
 };

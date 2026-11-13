@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.2.4 — Three.js r170. */
+/* Dossier BAASS 3D v0.2.5 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -6,7 +6,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { getGPUTier } from './vendor/detect-gpu.esm.js';
-import { createMoveInput, cameraRelative } from './vendor/touch-controls/touch-controls.js';
+import { createMoveInput, cameraRelative, applyLook } from './vendor/touch-controls/touch-controls.js';
 import {
   VERSION, SAVE_KEY, SETTINGS_KEY, BANNER, DISCLAIMER,
   EVIDENCE, ZONES, CREDITS, ASSETS_USED, SOUND_CREDITS,
@@ -257,8 +257,9 @@ function pollGamepadLook() {
     if (!p) continue;
     const rx = Math.abs(p.axes[2]) > 0.12 ? p.axes[2] : 0;
     const ry = Math.abs(p.axes[3]) > 0.12 ? p.axes[3] : 0;
-    camYaw += rx * 0.04;
-    camPitch = Math.max(-0.9, Math.min(0.85, camPitch + ry * 0.03));
+    const lookPad = applyLook(camYaw, camPitch, rx, ry, { sensYaw: 0.04, sensPitch: 0.03 });
+    camYaw = lookPad.yaw;
+    camPitch = lookPad.pitch;
     if (p.buttons[0] && p.buttons[0].pressed && !input._padAct) { input._padAct = true; tryAction(); }
     if (p.buttons[0] && !p.buttons[0].pressed) input._padAct = false;
   }
@@ -294,13 +295,15 @@ window.addEventListener('mouseup', () => { look.dragging = false; });
 window.addEventListener('mousemove', (e) => {
   if (!running || ended) return;
   if (document.pointerLockElement === canvas) {
-    camYaw += e.movementX * look.sens;
-    camPitch = Math.max(-0.9, Math.min(0.85, camPitch + e.movementY * look.sens));
+    const lk = applyLook(camYaw, camPitch, e.movementX, e.movementY, { sens: look.sens });
+    camYaw = lk.yaw;
+    camPitch = lk.pitch;
     return;
   }
   if (!look.dragging) return;
-  camYaw += (e.clientX - look.lx) * look.sens;
-  camPitch = Math.max(-0.9, Math.min(0.85, camPitch + (e.clientY - look.ly) * look.sens));
+  const lk = applyLook(camYaw, camPitch, e.clientX - look.lx, e.clientY - look.ly, { sens: look.sens });
+  camYaw = lk.yaw;
+  camPitch = lk.pitch;
   look.lx = e.clientX; look.ly = e.clientY;
 });
 
@@ -644,14 +647,48 @@ function zoneAt(x, z) {
   return currentZone;
 }
 
+function onRampXZ(x, z) {
+  return x >= RAMP.x0 && x <= RAMP.x1 && z >= RAMP.z0 && z <= RAMP.z1;
+}
+
+/** Third-person rig. On the ramp, a short, downward-looking camera
+ *  that aims toward the lab door (not the sloped ceiling), without
+ *  the lab-room LAB_CEIL clamp that was pinning the camera too high
+ *  relative to the slope (and framing only concrete). */
+function cameraRig() {
+  const x = player.pos.x, z = player.pos.z, y = player.pos.y;
+  const ramp = onRampXZ(x, z);
+  const indoor = isIndoors(x, z, y) || currentZone === 'lab';
+  const dist = ramp ? 1.7 : (indoor ? 3.05 : camDist);
+  const height = ramp ? 1.2 : (indoor ? 1.55 : 2.15);
+  const lookH = ramp ? 0.55 : (indoor ? 1.25 : 1.4);
+  const offY = Math.sin(camPitch) * dist + height;
+  const hd = Math.cos(camPitch) * dist;
+  let cy = y + offY;
+  if (indoor && y < -0.5 && !ramp) cy = Math.min(cy, LAB_CEIL - 0.28);
+  if (ramp) cy = Math.min(cy, y + 2.15);
+  const ahead = ramp ? 2.4 : 0;
+  const tx = x + Math.sin(camYaw) * ahead;
+  const tz = z + Math.cos(camYaw) * ahead;
+  const ty = ramp ? groundY(tx, tz) + lookH : y + lookH;
+  return {
+    x: x - Math.sin(camYaw) * hd,
+    y: cy,
+    z: z - Math.cos(camYaw) * hd,
+    tx, ty, tz,
+    indoor, ramp,
+  };
+}
+
 function updatePlayer(dt) {
   const mv = ensureMoveInput().read();
   input.x = mv.x;
   input.y = mv.y;
   const ld = moveInput.readLook();
   if (running && !ended) {
-    camYaw += ld.dx * 0.006;
-    camPitch = Math.max(-0.9, Math.min(0.85, camPitch + ld.dy * 0.006));
+    const lk = applyLook(camYaw, camPitch, ld.dx, ld.dy, { sens: 0.006 });
+    camYaw = lk.yaw;
+    camPitch = lk.pitch;
     pollGamepadLook();
   }
   const moving = Math.hypot(mv.x, mv.y) > 0.08;
@@ -692,18 +729,11 @@ function updatePlayer(dt) {
   }
   // camera — collision so we never sit inside walls
   if (!camOverride) {
-    const indoor = isIndoors(player.pos.x, player.pos.z, player.pos.y) || currentZone === 'lab';
-    const dist = indoor ? 3.05 : camDist;
-    const height = indoor ? 1.55 : 2.15;
-    const offY = Math.sin(camPitch) * dist + height;
-    const hd = Math.cos(camPitch) * dist;
-    const cx = player.pos.x - Math.sin(camYaw) * hd;
-    const cz = player.pos.z - Math.cos(camYaw) * hd;
-    let cy = player.pos.y + offY;
-    if (indoor && player.pos.y < -0.5) cy = Math.min(cy, LAB_CEIL - 0.28);
-    tmpV2.set(player.pos.x, player.pos.y + (indoor ? 1.25 : 1.4), player.pos.z);
+    const rig = cameraRig();
+    tmpV2.set(rig.tx, rig.ty, rig.tz);
     const solidsAll = solids.concat(labWalls || []);
-    placeCameraSafe(camera, { x: cx, y: cy, z: cz }, tmpV2, solidsAll, indoor ? 0.26 : 0.38);
+    const rad = rig.ramp ? 0.18 : (rig.indoor ? 0.26 : 0.38);
+    placeCameraSafe(camera, { x: rig.x, y: rig.y, z: rig.z }, tmpV2, solidsAll, rad);
   }
 
   const z = zoneAt(player.pos.x, player.pos.z);
@@ -1495,19 +1525,7 @@ function exposeHook() {
     /** Third-person pose from camYaw / camPitch, ignoring wall collision
      *  (clipped cameras sit on the player and make NDC undefined). */
     idealCameraPose() {
-      const indoor = (typeof isIndoors === 'function') && isIndoors(player.pos.x, player.pos.z, player.pos.y);
-      const dist = indoor ? 3.05 : 5.2;
-      const height = indoor ? 1.55 : 2.15;
-      const offY = Math.sin(camPitch) * dist + height;
-      const hd = Math.cos(camPitch) * dist;
-      return {
-        x: player.pos.x - Math.sin(camYaw) * hd,
-        y: player.pos.y + offY,
-        z: player.pos.z - Math.cos(camYaw) * hd,
-        tx: player.pos.x,
-        ty: player.pos.y + (indoor ? 1.25 : 1.4),
-        tz: player.pos.z,
-      };
+      return cameraRig();
     },
     setCamYaw(y, p) {
       camYaw = y;
@@ -1577,10 +1595,13 @@ function exposeHook() {
         camYaw = 0.92;
         camPitch = 0.12;
       } else if (zone === 'ramp') {
+        // Look down the slope (≈0.8 rad) toward the lab door, so the
+        // floor and door fill the frame instead of the ceiling, and
+        // screen-up is forward along the ramp.
         camYaw = Math.PI / 2;
-        camPitch = 0.22;
+        camPitch = 0.68;
       }
-      currentZone = zone === 'entrance' || zone === 'ramp' ? (zoneAt(s[0], s[1]) || 'hangar') : zone;
+      currentZone = zoneAt(s[0], s[1]) || (zone === 'entrance' ? 'hangar' : zone);
       $('hudZone').textContent = ZONES[currentZone]?.name || currentZone;
       if (worldLights) worldLights.applyAtmos(currentZone === 'lab' ? 'lab' : currentZone);
       AudioSys.setZone(currentZone);
