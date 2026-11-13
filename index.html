@@ -13,7 +13,7 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<link rel="stylesheet" href="./style.css?v=0.1.1">
+<link rel="stylesheet" href="./style.css?v=0.2.0">
 <script type="importmap">
 {"imports":{
   "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -23,26 +23,28 @@
 </head>
 <body>
 <canvas id="c" aria-hidden="true"></canvas>
+<div id="fade" aria-hidden="true"></div>
 
 <div id="banner" role="note">plan de recherche, pas une preuve ; histoire fictive</div>
 
 <div id="loading" role="status">
   <p class="load-kicker">Dossier BAASS</p>
   <h1>Site de recherche</h1>
-  <p class="load-sub">Chargement du ranch, du hangar et du laboratoire…</p>
+  <p class="load-sub">Chargement du ranch, du hangar et du bunker souterrain…</p>
   <div class="load-bar" aria-hidden="true"><i id="loadBar"></i></div>
 </div>
 
 <header id="top">
   <div class="ttl">
     <b id="ttlMain">Dossier BAASS</b>
-    <span id="ttlSub">Enquêteur · site secret</span>
+    <span id="ttlSub">Enquêteur · dossier classifié</span>
   </div>
   <div id="topBtns">
     <div id="hudStats" class="hidden" aria-live="polite">
-      <span id="hudEvidence" title="Preuves">0 / 8</span>
-      <span id="hudTime" title="Temps">0:00</span>
-      <span id="hudZone" title="Zone">Ranch</span>
+      <span class="chip-label">Preuves</span>
+      <span id="hudEvidence" class="chip chip-ev" title="Preuves">0 / 8</span>
+      <span id="hudTime" class="chip" title="Temps">0:00</span>
+      <span id="hudZone" class="chip chip-zone" title="Zone">Ranch</span>
     </div>
     <button type="button" id="bMute" class="ico" aria-label="Couper le son" aria-pressed="false">🔊</button>
     <button type="button" id="bFull" class="ico" aria-label="Plein écran">⛶</button>
@@ -50,9 +52,9 @@
 </header>
 
 <section id="menu" class="panel hidden" aria-labelledby="menuTitle">
-  <p class="kicker">Jeu 3D · enquête</p>
+  <p class="kicker">Jeu 3D · enquête <span class="stamp" aria-hidden="true">Classifié</span></p>
   <h1 id="menuTitle">Dossier BAASS</h1>
-  <p class="lead">Tu es un enquêteur fictif. Tu explores un site de recherche secret — ranch, hangar, laboratoire — et tu recueilles des preuves. Chaque preuve est un extrait réel du plan BAASS (2 décembre 2008).</p>
+  <p class="lead">Tu es un enquêteur fictif. Tu explores un site de recherche secret — ranch, hangar, laboratoire souterrain — et tu recueilles des preuves. Chaque preuve est un extrait réel du plan BAASS (2 décembre 2008).</p>
   <p class="disclaimer">Ceci est un plan de gestion de recherche, pas une preuve de physique nouvelle ni d’engin extraterrestre. L’histoire du jeu est une fiction.</p>
   <div class="actions">
     <button type="button" id="bPlay" class="primary">Commencer l’enquête</button>
@@ -66,7 +68,7 @@
   <h2 id="howTitle">Commandes</h2>
   <ul class="howto">
     <li><b>Téléphone :</b> joystick à gauche pour marcher, glisser à droite pour regarder, bouton pour examiner une preuve.</li>
-    <li><b>Clavier :</b> ZQSD ou flèches pour marcher, souris pour regarder (clic dans le jeu), E pour examiner.</li>
+    <li><b>Clavier :</b> ZQSD ou flèches pour marcher, souris pour regarder (clic dans le jeu), E pour examiner, <b>M</b> pour couper le son.</li>
     <li><b>Manette :</b> stick gauche pour marcher, stick droit pour regarder, bouton A pour examiner.</li>
   </ul>
   <p>Trouve les 8 preuves, assiste au survol du TR-3B, et visite le site de l’épave. Une partie dure environ 5 à 8 minutes.</p>
@@ -82,7 +84,7 @@
 
 <section id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="shTitle">
   <button type="button" class="close" data-close="sheet" aria-label="Fermer la preuve">✕</button>
-  <p id="shTag" class="tag">Extrait réel · page <span id="shPage"></span></p>
+  <p class="sheet-kicker"><span class="stamp stamp-sm">Classifié</span> <span id="shTag" class="tag">Extrait réel · page <span id="shPage"></span></span></p>
   <h2 id="shTitle"></h2>
   <blockquote id="shQuote"></blockquote>
   <p id="shBody"></p>
@@ -115,6 +117,6 @@
 
 <div id="fps" class="hidden" aria-hidden="true"></div>
 
-<script type="module" src="./main.js?v=0.1.1"></script>
+<script type="module" src="./main.js?v=0.2.0"></script>
 </body>
 </html>

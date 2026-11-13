@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.1.0 — Three.js r170. */
+/* Dossier BAASS 3D v0.2.0 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -8,16 +8,31 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { getGPUTier } from './vendor/detect-gpu.esm.js';
 import {
   VERSION, SAVE_KEY, SETTINGS_KEY, BANNER, DISCLAIMER,
-  EVIDENCE, ZONES, CREDITS, ASSETS_USED,
+  EVIDENCE, ZONES, CREDITS, ASSETS_USED, SOUND_CREDITS,
 } from './data.js';
+import { propUrl } from './props.js';
+import {
+  LAB_Y, LAB_CEIL, BUNKER, RAMP,
+  groundY, isIndoors, reducedMotion,
+  makeDesertGround, createLights, buildBunker, updateBunkerLights,
+  AudioSys, setupFade, PickupFX, pulseCraft, fitProp, sanitizeMaterials,
+} from './mood.js';
 
-const showFps = /(?:\?|&)fps=1(?:&|$)/.test(location.search);
-const wantFx = /(?:\?|&)fx=1(?:&|$)/.test(location.search);
+const qs = new URLSearchParams(location.search);
+const showFps = qs.get('fps') === '1';
+const wantFx = qs.get('fx') === '1';
+const tierParam = qs.get('tier');
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 let pixelRatioCap = 2;
-let gpuInfo = { tier: 0, gpu: 'unknown', isMobile: true };
-let lowTier = true;
+let gpuInfo = { tier: 2, gpu: '?', type: 'default', fps: 0, isMobile: false };
+let qualityLow = tierParam != null && tierParam !== '' && Number.isFinite(+tierParam) && +tierParam <= 1;
+let lowTier = qualityLow;
+let worldLights = null;
+let bunkerFx = null;
+let pickupFx = null;
+let Fade = null;
+let enteredBunker = false;
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({
@@ -77,8 +92,7 @@ let elapsed = 0;
 let ended = false;
 let nearestEvidence = null;
 let currentZone = 'ranch';
-let audioCtx = null;
-let muted = false;
+let muted = false; // miroir de AudioSys.muted, pour la sauvegarde
 let lastCalls = 0;
 let lastTris = 0;
 let lastFps = 0;
@@ -92,26 +106,56 @@ let camOverride = null;
 function $(id) { return document.getElementById(id); }
 
 /* ---------- GPU & resize ---------- */
+function applyQuality() {
+  pixelRatioCap = qualityLow ? 1 : 2;
+  lowTier = qualityLow;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.shadowMap.enabled = !!(wantFx && !qualityLow);
+  if (worldLights) worldLights.applyQuality(qualityLow);
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of list) {
+      if (!m) continue;
+      if (m.envMapIntensity != null) m.envMapIntensity = qualityLow ? 0 : (m.userData._env0 ?? m.envMapIntensity);
+      if (m.clearcoat != null) {
+        if (m.userData._cc0 == null) m.userData._cc0 = m.clearcoat;
+        m.clearcoat = qualityLow ? 0 : m.userData._cc0;
+        m.needsUpdate = true;
+      }
+    }
+  });
+}
+
 async function initGPU() {
+  let info = null;
   try {
-    const info = await getGPUTier({ benchmarksURL: './detect-gpu-benchmarks' });
+    info = await Promise.race([
+      getGPUTier({ benchmarksURL: './detect-gpu-benchmarks' }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
+    ]);
+  } catch {
+    info = null;
+  }
+  if (info) {
     gpuInfo = {
-      tier: info.tier ?? 0,
-      gpu: info.gpu || info.device || 'unknown',
+      tier: info.tier ?? 2,
+      gpu: info.gpu || info.device || '?',
+      type: info.type || 'unknown',
+      fps: info.fps ?? 0,
       isMobile: !!info.isMobile,
     };
-    lowTier = (info.tier ?? 0) <= 1;
-  } catch (err) {
-    console.warn('detect-gpu:', err);
-    lowTier = true;
-    gpuInfo = { tier: 0, gpu: 'unknown', isMobile: true };
+  } else {
+    gpuInfo = { tier: 2, gpu: '?', type: 'fallback', fps: 0, isMobile: true };
   }
-  pixelRatioCap = lowTier ? 1 : 2;
-  if (!wantFx) {
-    // cheap path by default (fx off)
-    renderer.shadowMap.enabled = false;
+  if (tierParam != null && tierParam !== '' && Number.isFinite(+tierParam)) {
+    gpuInfo.tier = +tierParam;
+    gpuInfo.type = 'override';
   }
-  resize();
+  qualityLow = gpuInfo.tier <= 1;
+  lowTier = qualityLow;
+  applyQuality();
 }
 
 function resize() {
@@ -133,52 +177,16 @@ function makeLoader() {
   return new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 }
 
-/* ---------- Audio (simple synth, unlock on first gesture) ---------- */
-function unlockAudio() {
-  if (audioCtx) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    return;
-  }
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-  audioCtx = new AC();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-}
-
-function beep(freq, dur, type, gain) {
-  if (muted || !audioCtx) return;
-  const t = audioCtx.currentTime;
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = type || 'sine';
-  o.frequency.setValueAtTime(freq, t);
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(gain ?? 0.07, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start(t); o.stop(t + dur + 0.02);
-}
-
-function sndCollect() { beep(660, 0.12, 'triangle', 0.08); setTimeout(() => beep(880, 0.18, 'triangle', 0.07), 90); }
-function sndClick() { beep(420, 0.06, 'square', 0.04); }
-function sndTr3b() {
-  if (muted || !audioCtx) return;
-  const t = audioCtx.currentTime;
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.type = 'sawtooth';
-  o.frequency.setValueAtTime(80, t);
-  o.frequency.linearRampToValueAtTime(55, t + 2.5);
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(0.05, t + 0.4);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start(t); o.stop(t + 3.3);
-}
-function sndEnd() { beep(523, 0.2, 'sine', 0.08); setTimeout(() => beep(659, 0.25, 'sine', 0.08), 180); setTimeout(() => beep(784, 0.4, 'sine', 0.08), 380); }
+/* ---------- Audio (Web Audio files, unlock on first gesture) ---------- */
+function unlockAudio() { return AudioSys.unlock(); }
+function sndClick() { AudioSys.play('ui_click', { gain: 0.28 }); }
+function sndCollect() { AudioSys.play('pickup', { gain: 0.4 }); }
+function sndOpen() { AudioSys.play('ui_open', { gain: 0.32 }); }
+function sndTr3b() { AudioSys.setHum(true); }
+function sndEnd() { AudioSys.play('ui_open', { gain: 0.36 }); }
 
 ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
-  window.addEventListener(ev, unlockAudio, { once: true, passive: true });
+  window.addEventListener(ev, () => { AudioSys.unlock(); }, { once: true, passive: true });
 });
 
 /* ---------- Settings ---------- */
@@ -186,10 +194,12 @@ function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     muted = !!s.muted;
-  } catch { muted = false; }
+    AudioSys.muted = muted;
+  } catch { muted = false; AudioSys.muted = false; }
   syncMute();
 }
 function saveSettings() {
+  muted = AudioSys.muted;
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ muted })); } catch { /* ignore */ }
 }
 function getBest() {
@@ -209,14 +219,27 @@ function saveBest(score, time) {
 
 function syncMute() {
   const b = $('bMute');
-  b.textContent = muted ? '🔇' : '🔊';
-  b.setAttribute('aria-pressed', muted ? 'true' : 'false');
-  b.setAttribute('aria-label', muted ? 'Activer le son' : 'Couper le son');
+  if (!b) return;
+  const m = AudioSys.muted;
+  muted = m;
+  b.textContent = m ? '🔇' : '🔊';
+  b.setAttribute('aria-pressed', m ? 'true' : 'false');
+  b.setAttribute('aria-label', m ? 'Activer le son' : 'Couper le son');
+}
+function toggleMute() {
+  AudioSys.setMuted(!AudioSys.muted);
+  syncMute();
+  saveSettings();
 }
 
 /* ---------- Input ---------- */
 window.addEventListener('keydown', (e) => {
   input.keys[e.code] = true;
+  if (e.code === 'KeyM') {
+    e.preventDefault();
+    toggleMute();
+    return;
+  }
   if (e.code === 'KeyE' || e.code === 'Space') {
     if (e.code === 'Space') e.preventDefault();
     tryAction();
@@ -332,7 +355,7 @@ $('bAct').addEventListener('click', () => { unlockAudio(); tryAction(); });
 const gltfCache = new Map();
 async function loadGLB(name) {
   if (gltfCache.has(name)) return gltfCache.get(name);
-  const url = './assets/' + name + '-v1.glb';
+  const url = propUrl(name);
   const gltf = await loader.loadAsync(url);
   gltfCache.set(name, gltf);
   return gltf;
@@ -362,6 +385,7 @@ function prepareObject(root) {
       }
     }
   });
+  sanitizeMaterials(root);
   return root;
 }
 
@@ -393,6 +417,34 @@ function placeGLB(gltf, { x, z, y = 0, ry = 0, scale = 1, collide = true, name =
 /* Quantized (KHR_mesh_quantization) attributes must be decoded to
    Float32 before applyMatrix4 / InstancedMesh, or write-back clamps
    into the integer buffer and the mesh becomes kilometre-scale. */
+function placeFitted(gltf, opts) {
+  const floor = opts.y ?? 0;
+  const obj = placeGLB(gltf, { ...opts, y: 0, scale: opts.scale ?? 1 });
+  if (opts.rx) obj.rotation.x = opts.rx;
+  if (opts.rz) obj.rotation.z = opts.rz;
+  obj.updateMatrixWorld(true);
+  if (opts.fit) {
+    // world-scale so height == fit, then sit on floor
+    const box = new THREE.Box3().setFromObject(obj);
+    if (!box.isEmpty()) {
+      const h = box.max.y - box.min.y || 1;
+      const k = opts.fit / h;
+      obj.scale.multiplyScalar(k);
+      obj.updateMatrixWorld(true);
+      const b2 = new THREE.Box3().setFromObject(obj);
+      obj.position.y += floor - b2.min.y;
+      obj.updateMatrixWorld(true);
+    }
+  } else {
+    obj.position.y = floor;
+  }
+  if (opts.collide) {
+    solids.pop();
+    addSolidFrom(obj);
+  }
+  return obj;
+}
+
 function geometryToFloat32(g) {
   for (const name of g.attributes ? Object.keys(g.attributes) : []) {
     const a = g.getAttribute(name);
@@ -570,7 +622,7 @@ function triggerTR3B() {
   tr3b.position.set(10, 42, -70);
   tr3b.rotation.set(0, 0, 0); // front +Z, underside at Y
   setTR3BLights(true);
-  sndTr3b();
+  AudioSys.setHum(true);
   showHint('Un engin triangulaire s’approche du hangar…');
 }
 
@@ -585,11 +637,9 @@ function updateTR3B(dt) {
     tr3b.rotation.y = Math.sin(tr3bT * 0.4) * 0.08;
     if (t >= 1) { tr3bState = 'hover'; tr3bClock = performance.now(); tr3bT = 0; tr3bSeen = true; showHint('L’engin reste en vol stationnaire au-dessus du hangar.'); }
   } else if (tr3bState === 'hover') {
-    tr3b.position.y = 22 + Math.sin(tr3bT * 1.3) * 0.6;
-    tr3b.rotation.y += dt * 0.15;
-    const pulse = 2.5 + Math.sin(tr3bT * 3) * 1.2;
-    tr3b.traverse((o) => { if (o.isPointLight) o.intensity = pulse; });
-    if (tr3bT > 6) { tr3bState = 'leaving'; tr3bClock = performance.now(); tr3bT = 0; showHint('L’engin s’éloigne vers le nord.'); sndTr3b(); }
+    tr3b.position.y = 22 + Math.sin(tr3bT * 0.7 * Math.PI * 2) * 0.85;
+    tr3b.rotation.y += dt * 0.12;
+    if (tr3bT > 6) { tr3bState = 'leaving'; tr3bClock = performance.now(); tr3bT = 0; showHint('L’engin s’éloigne vers le nord.'); }
   } else if (tr3bState === 'leaving') {
     const t = Math.min(1, tr3bT / 4);
     const a = 1 - Math.pow(1 - t, 2);
@@ -598,6 +648,7 @@ function updateTR3B(dt) {
       tr3bState = 'gone';
       setTR3BLights(false);
       tr3b.visible = false;
+      AudioSys.setHum(false);
       maybeFinish();
     }
   }
@@ -651,6 +702,7 @@ function updatePlayer(dt) {
     player.pos.z = c2.z;
     player.yaw = Math.atan2(fx, fz);
   }
+  player.pos.y = groundY(player.pos.x, player.pos.z);
   if (player.object) {
     player.object.position.set(player.pos.x, player.pos.y, player.pos.z);
     player.object.rotation.y = player.yaw;
@@ -672,14 +724,16 @@ function updatePlayer(dt) {
   }
   // camera
   if (!camOverride) {
-    const indoor = currentZone === 'lab';
-    const dist = indoor ? 3.2 : camDist;
-    const height = indoor ? 1.7 : 2.15;
+    const indoor = isIndoors(player.pos.x, player.pos.z, player.pos.y) || currentZone === 'lab';
+    const dist = indoor ? 3.05 : camDist;
+    const height = indoor ? 1.55 : 2.15;
     const offY = Math.sin(camPitch) * dist + height;
     const hd = Math.cos(camPitch) * dist;
     const cx = player.pos.x - Math.sin(camYaw) * hd;
     const cz = player.pos.z - Math.cos(camYaw) * hd;
-    camera.position.set(cx, player.pos.y + offY, cz);
+    let cy = player.pos.y + offY;
+    if (indoor && player.pos.y < -0.5) cy = Math.min(cy, LAB_CEIL - 0.28);
+    camera.position.set(cx, cy, cz);
     tmpV2.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
     camera.lookAt(tmpV2);
   }
@@ -688,6 +742,14 @@ function updatePlayer(dt) {
   if (z !== currentZone) {
     currentZone = z;
     $('hudZone').textContent = ZONES[z]?.name || z;
+    if (worldLights) worldLights.applyAtmos(z);
+    AudioSys.setZone(z);
+    if (z === 'lab' && running && !enteredBunker) {
+      enteredBunker = true;
+      AudioSys.play('door', { gain: 0.42 });
+      AudioSys.play('bunker_blip', { gain: 0.22 });
+      if (Fade && !reducedMotion()) Fade.dip(520);
+    }
   }
   if (z === 'wreck') wreckVisited = true;
   if (z === 'hangar' && tr3bState === 'idle' && collected.size >= 2) triggerTR3B();
@@ -716,17 +778,30 @@ function collectEvidence(id, { silent = false } = {}) {
   if (!ev || collected.has(id)) return false;
   collected.add(id);
   const n = evidenceNodes.get(id);
-  if (n) n.visible = false;
   $('hudEvidence').textContent = collected.size + ' / ' + EVIDENCE.length;
-  if (!silent) {
-    sndCollect();
-    openSheet(ev);
+  const armTr3b = () => {
+    if (collected.size >= 3 && tr3bState === 'idle') {
+      if (currentZone === 'hangar' || currentZone === 'lab') triggerTR3B();
+    }
+    maybeFinish();
+  };
+  const finishCollect = () => {
+    if (n) n.visible = false;
+    if (!silent) openSheet(ev);
+    armTr3b();
+  };
+  if (silent || reducedMotion() || !pickupFx || !n) {
+    if (n) n.visible = false;
+    if (!silent) { sndCollect(); openSheet(ev); }
+    armTr3b();
+    return true;
   }
-  if (collected.size >= 3 && tr3bState === 'idle') {
-    // arm the event; it fires on hangar entry or immediately if already there
-    if (currentZone === 'hangar' || currentZone === 'lab') triggerTR3B();
-  }
-  maybeFinish();
+  sndCollect();
+  n.visible = true;
+  const wp = new THREE.Vector3();
+  n.getWorldPosition(wp);
+  wp.y += 0.35;
+  pickupFx.burst(wp, finishCollect);
   return true;
 }
 
@@ -780,58 +855,13 @@ function formatTime(s) {
 
 /* ---------- World ---------- */
 function makeGround() {
-  const geo = new THREE.PlaneGeometry(200, 200, 1, 1);
-  geo.rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xc2a36a, roughness: 0.95, metalness: 0,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.name = 'ground';
-  mesh.receiveShadow = false;
-  scene.add(mesh);
-  // ranch dirt patch
-  const dirt = new THREE.Mesh(
-    new THREE.CircleGeometry(28, 20),
-    new THREE.MeshStandardMaterial({ color: 0xb8945c, roughness: 1, metalness: 0 }),
-  );
-  dirt.rotation.x = -Math.PI / 2;
-  dirt.position.set(-18, 0.02, 2);
-  scene.add(dirt);
-  const pad = new THREE.Mesh(
-    new THREE.PlaneGeometry(36, 36),
-    new THREE.MeshStandardMaterial({ color: 0x8a8878, roughness: 0.9, metalness: 0.05 }),
-  );
-  pad.rotation.x = -Math.PI / 2;
-  pad.position.set(12, 0.03, 4);
-  scene.add(pad);
-  const wreckPad = new THREE.Mesh(
-    new THREE.CircleGeometry(16, 16),
-    new THREE.MeshStandardMaterial({ color: 0xa88850, roughness: 1 }),
-  );
-  wreckPad.rotation.x = -Math.PI / 2;
-  wreckPad.position.set(-8, 0.02, 44);
-  scene.add(wreckPad);
+  makeDesertGround(scene);
 }
 
 function lights() {
-  const amb = new THREE.AmbientLight(0xc8c0b0, 0.55);
-  scene.add(amb);
-  const hemi = new THREE.HemisphereLight(0xd8e4f0, 0x8a7040, 1.15);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0d0, 1.55);
-  sun.position.set(-40, 70, 30);
-  sun.castShadow = false;
-  scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xa8b8d0, 0.45);
-  fill.position.set(40, 25, -30);
-  scene.add(fill);
-  const labFill = new THREE.PointLight(0xd8eeff, 2.2, 36);
-  labFill.position.set(44, 3.2, 4);
-  labFill.name = 'labFill';
-  scene.add(labFill);
-  const labFill2 = new THREE.PointLight(0xffe8c8, 1.6, 24);
-  labFill2.position.set(50, 3.0, 16);
-  scene.add(labFill2);
+  worldLights = createLights(scene);
+  worldLights.qualityLow = qualityLow;
+  worldLights.applyAtmos('ranch');
 }
 
 async function buildWorld(onProg) {
@@ -839,11 +869,11 @@ async function buildWorld(onProg) {
   lights();
   const names = [
     'barn','shed','truck','fence','metal-fence','debris','ufo','papers',
-    'folder','cabinet','man',
+    'folder','folder-manilla','cabinet','lab-cabinet','lab-things','server-rack','paperclip','man',
     'building-l','building-a','building-f','building-s',
     'container-a','container-b','water-tower','chimney','tank',
     'room-wide','room-small','corridor-wide','corridor-wide-corner','corridor-wide-end','gate-door',
-    'box-large','box-small','machine','machine-fortified','screen-panel',
+    'box-large','box-small','machine-outdoor','screen-panel',
     'tree-tall','tree','rock-sand','rock','barrel',
   ];
   const loaded = {};
@@ -902,7 +932,7 @@ async function buildWorld(onProg) {
   placeGLB(loaded['building-s'], { x: 22, z: -8, ry: 0, scale: S, name: 'hangar-s', collide: true });
   placeGLB(loaded['water-tower'], { x: 2, z: -10, ry: 0, scale: 6, name: 'water-tower', collide: true });
   placeGLB(loaded.chimney, { x: 1, z: 16, ry: 0, scale: 6, name: 'chimney', collide: true });
-  placeGLB(loaded.tank, { x: 22, z: 8, ry: 0.3, scale: S, name: 'tank', collide: true });
+  placeGLB(loaded.tank, { x: 4, z: 22, ry: 0.3, scale: S, name: 'tank', collide: true });
 
   const containers = [
     { x: 2, z: -2, ry: 0, scale: S },
@@ -916,27 +946,73 @@ async function buildWorld(onProg) {
     { x: 6.4, z: -6.9, ry: 0.7, scale: 1 },
     { x: 16, z: 10, ry: 0.4, scale: 1 },
     { x: 17, z: 10.6, ry: 0, scale: 1 },
-    { x: 36, z: 0, ry: 0.2, scale: 1 },
-    { x: 37, z: 0.5, ry: 0.5, scale: 1 },
   ];
   instanceFrom(loaded['box-large'], boxes, { collide: true, name: 'boxes' });
-  placeGLB(loaded.machine, { x: 16, z: -8, ry: -0.4, name: 'machine-out', collide: true });
+  placeGLB(loaded['machine-outdoor'], { x: 16, z: -8, ry: -0.4, name: 'machine-out', collide: true });
   placeGLB(loaded.barrel, { x: -10, z: 6, scale: 1, collide: true, name: 'barrel' });
 
-  // —— Lab (space kit, 1 unit = 1 m, walkable) ——
-  // corridor-wide 8×8, assume openings along Z; we rotate so openings face ±X (west-east)
-  const labY = 0;
-  placeGLB(loaded['corridor-wide'], { x: 30, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor', collide: false });
-  placeGLB(loaded['corridor-wide'], { x: 38, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor-2', collide: false });
-  placeGLB(loaded['room-wide'], { x: 50, z: 4, y: labY, ry: 0, name: 'lab-room', collide: false });
-  placeGLB(loaded['room-small'], { x: 50, z: 16, y: labY, ry: 0, name: 'lab-room-2', collide: false });
-  placeGLB(loaded['corridor-wide-corner'], { x: 50, z: 10, y: labY, ry: 0, name: 'lab-corner', collide: false });
+  // —— Lab (space kit at LAB_Y, inside concrete bunker) ——
+  const labY = LAB_Y;
+  bunkerFx = buildBunker(scene, {
+    addSolid(s) { solids.push(s); },
+  });
+  if (worldLights) worldLights.cones = bunkerFx.cones;
+  // entrance blast door at the pavilion (surface)
+  placeGLB(loaded['gate-door'], { x: 15.85, z: 4, y: 0, ry: Math.PI / 2, name: 'bunker-door', collide: false });
+  function tintLabKit(obj) {
+    const concrete = new THREE.Color(0x8c8880);
+    obj.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      list.forEach((m) => {
+        const nm = (m.name || '').toLowerCase();
+        if ((m.emissive && m.emissive.getHex() !== 0 && (m.emissiveIntensity || 0) > 0.5) || /emission|emissive|light|glow/.test(nm)) return;
+        m.map = null;
+        m.normalMap = null;
+        m.roughnessMap = null;
+        m.metalnessMap = null;
+        m.aoMap = null;
+        m.vertexColors = false;
+        m.color = concrete.clone();
+        if (m.roughness != null) m.roughness = 0.88;
+        if (m.metalness != null) m.metalness = 0.04;
+        m.envMapIntensity = 0;
+        m.needsUpdate = true;
+        if (o.geometry && o.geometry.getAttribute('color')) o.geometry.deleteAttribute('color');
+      });
+    });
+  }
+  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 30, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor', collide: false }));
+  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 38, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor-2', collide: false }));
+  tintLabKit(placeGLB(loaded['room-wide'], { x: 50, z: 4, y: labY, ry: 0, name: 'lab-room', collide: false }));
+  tintLabKit(placeGLB(loaded['room-small'], { x: 50, z: 16, y: labY, ry: 0, name: 'lab-room-2', collide: false }));
+  tintLabKit(placeGLB(loaded['corridor-wide-corner'], { x: 50, z: 10, y: labY, ry: 0, name: 'lab-corner', collide: false }));
+  // inner blast door at bottom of ramp
   placeGLB(loaded['gate-door'], { x: 26.2, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-door', collide: false });
-  placeGLB(loaded['machine-fortified'], { x: 47, z: 1, ry: 0.2, name: 'lab-machine', collide: true });
-  placeGLB(loaded['screen-panel'], { x: 53, z: 1, ry: Math.PI, name: 'lab-screen', collide: true });
-  placeGLB(loaded.cabinet, { x: 46, z: 8, ry: Math.PI / 2, name: 'lab-cabinet', collide: true });
-  placeGLB(loaded.cabinet, { x: 46, z: 9, ry: Math.PI / 2, name: 'lab-cabinet-2', collide: true });
-  placeGLB(loaded.machine, { x: 53, z: 16, ry: 0, name: 'lab-machine-2', collide: true });
+  // Sketchfab CC BY props (paths in props.js)
+  placeFitted(loaded.cabinet, { x: 46, z: 8, y: labY, ry: Math.PI / 2, fit: 1.32, name: 'lab-cabinet-rusty', collide: true });
+  placeFitted(loaded.cabinet, { x: 46, z: 9.35, y: labY, ry: Math.PI / 2, fit: 1.32, name: 'lab-cabinet-rusty-2', collide: true });
+  placeFitted(loaded['lab-cabinet'], { x: 54.4, z: 1.4, y: labY, ry: Math.PI, fit: 1.7, name: 'lab-cabinet-glass', collide: true });
+  placeFitted(loaded['lab-things'], { x: 47.4, z: 1.2, y: labY, ry: 0.15, fit: 1.45, name: 'lab-things', collide: true });
+  placeFitted(loaded['server-rack'], { x: 58.2, z: 6, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-1', collide: true });
+  placeFitted(loaded['server-rack'], { x: 58.2, z: 8.1, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-2', collide: true });
+  placeFitted(loaded['lab-things'], { x: 53, z: 16.4, y: labY, ry: 0.4, fit: 1.35, name: 'lab-things-2', collide: true });
+  placeFitted(loaded.paperclip, { x: 48.6, z: 7.2, y: labY, ry: 0.6, fit: 0.12, name: 'paperclip-1', collide: false });
+  placeFitted(loaded.paperclip, { x: 51.2, z: 15.1, y: labY, ry: -0.3, fit: 0.12, name: 'paperclip-2', collide: false });
+  // decorative folders on / near cabinets (instanced would drop extra mats; few clones, later merged)
+  const folderSpots = [
+    { x: 45.3, z: 7.4, ry: 0.4, manilla: false },
+    { x: 45.55, z: 8.15, ry: 0.1, manilla: true },
+    { x: 45.2, z: 9.0, ry: -0.3, manilla: false },
+    { x: 47.8, z: 7.6, ry: 1.2, manilla: true },
+    { x: 52.2, z: 15.6, ry: 0.7, manilla: false },
+  ];
+  folderSpots.forEach((s, i) => {
+    const src = s.manilla ? loaded['folder-manilla'] : loaded.folder;
+    placeFitted(src, { x: s.x, z: s.z, y: labY, ry: s.ry, fit: 0.34, rx: Math.PI / 2, name: 'prop-folder-' + i, collide: false });
+  });
+  placeGLB(loaded['box-large'], { x: 44, z: 0.4, y: labY, ry: 0.2, name: 'lab-box-1', collide: true });
+  placeGLB(loaded['box-large'], { x: 45.1, z: 0.8, y: labY, ry: 0.5, name: 'lab-box-2', collide: true });
 
   // Lab walls (XZ), door gap on west of first corridor at z=4, x=26
   // corridor 8m: from x=26 to 34, z=0 to 8; then 34-42; room-wide 20×12 at (50,4) → x 40-60, z -2 to 10
@@ -972,12 +1048,38 @@ async function buildWorld(onProg) {
   ufo.rotation.z = 0.35;
   ufo.rotation.x = 0.18;
   ufo.updateMatrixWorld(true);
+  ufo.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of list) {
+      if (!m) continue;
+      if (m.metalness != null) m.metalness = Math.min(m.metalness ?? 1, 0.45);
+      if (m.roughness != null) m.roughness = Math.max(m.roughness ?? 0, 0.42);
+      if (m.color) m.color.lerp(new THREE.Color(0x6a7278), 0.55);
+      m.envMapIntensity = 0;
+      m.needsUpdate = true;
+    }
+  });
   // recompute solid
   solids.pop();
   addSolidFrom(ufo);
-  placeGLB(loaded.debris, { x: -4, z: 42, ry: 0.5, scale: 5.5, name: 'debris-1', collide: true });
-  placeGLB(loaded.debris, { x: -13, z: 47, ry: 2.1, scale: 4.8, name: 'debris-2', collide: true });
-  placeGLB(loaded.debris, { x: -6, z: 50, ry: 1.2, scale: 4.2, name: 'debris-3', collide: true });
+  const debrisPlaces = [
+    { x: -2.2, z: 48.2, ry: 0.5, scale: 1.65 },
+    { x: -14.1, z: 50.0, ry: 2.1, scale: 1.35 },
+    { x: -11.2, z: 40.4, ry: 1.2, scale: 1.15 },
+    { x: 0.3, z: 44.1, ry: 0.8, scale: 1.05 },
+    { x: -16.4, z: 43.2, ry: 2.8, scale: 1.45 },
+    { x: -5.1, z: 52.0, ry: 0.3, scale: 1.1 },
+    { x: -10.2, z: 48.4, ry: 1.7, scale: 0.95 },
+    { x: 1.4, z: 50.2, ry: 0.2, scale: 0.9 },
+    { x: -18.0, z: 46.1, ry: 2.4, scale: 1.2 },
+    { x: -3.4, z: 41.6, ry: 0.9, scale: 0.85 },
+    { x: -7.6, z: 53.2, ry: 1.5, scale: 1.05 },
+    { x: 2.2, z: 47.0, ry: 2.0, scale: 0.8 },
+  ];
+  debrisPlaces.forEach((d, i) => {
+    placeGLB(loaded.debris, { x: d.x, z: d.z, y: 0, ry: d.ry, scale: d.scale, name: 'debris-' + (i + 1), collide: true });
+  });
   placeGLB(loaded.papers, { x: -10, z: 41, y: 0.02, ry: 0.7, scale: 1.4, name: 'papers', collide: false });
   const mf = [
     { x: -20, z: 36, ry: 0.15, scale: 1 },
@@ -994,8 +1096,8 @@ async function buildWorld(onProg) {
     'proj-engagement': { x: -18, z: -8, y: 0.02, zone: 'ranch' },  // field / truck
     'area-materials': { x: 6.2, z: -7.2, y: 0.55, zone: 'hangar' },
     'area-control': { x: 16.4, z: -7.2, y: 0.55, zone: 'hangar' },
-    'area-lift': { x: 47.2, z: 8, y: 0, zone: 'lab' },              // by cabinet
-    'area-spatial': { x: 53, z: 15.2, y: 0, zone: 'lab' },
+    'area-lift': { x: 47.2, z: 8, y: LAB_Y, zone: 'lab' },              // by cabinet
+    'area-spatial': { x: 53, z: 15.2, y: LAB_Y, zone: 'lab' },
     'roswell-pio': { x: -11, z: 41.2, y: 0.02, zone: 'wreck' },
     'roswell-debris': { x: -4.2, z: 42.4, y: 0.4, zone: 'wreck' },
   };
@@ -1003,13 +1105,22 @@ async function buildWorld(onProg) {
     const p = evPos[ev.id];
     const usePapers = ev.id === 'proj-engagement' || ev.id === 'roswell-pio';
     const src = usePapers ? loaded.papers : loaded.folder;
-    const obj = placeGLB(src, {
-      x: p.x, z: p.z, y: p.y,
-      ry: ev.id.length * 0.4,
-      scale: usePapers ? 1.3 : 1,
-      collide: false,
-      name: 'evidence-' + ev.id,
-    });
+    const obj = usePapers
+      ? placeGLB(src, {
+          x: p.x, z: p.z, y: p.y,
+          ry: ev.id.length * 0.4,
+          scale: 1.3,
+          collide: false,
+          name: 'evidence-' + ev.id,
+        })
+      : placeFitted(src, {
+          x: p.x, z: p.z, y: p.y,
+          ry: ev.id.length * 0.4,
+          fit: 0.36,
+          rx: Math.PI / 2,
+          collide: false,
+          name: 'evidence-' + ev.id,
+        });
     // glow
     obj.traverse((o) => {
       if (o.isMesh && o.material) {
@@ -1123,6 +1234,7 @@ function hidePanels() {
 }
 
 function fillCredits() {
+  // SOUND_CREDITS are folded into CREDITS already; this keeps the list exact.
   const root = $('crdList');
   root.textContent = '';
   for (const c of CREDITS) {
@@ -1151,6 +1263,7 @@ function fillCredits() {
 }
 
 function openSheet(ev) {
+  sndOpen();
   $('shTitle').textContent = ev.title;
   $('shQuote').textContent = '« ' + ev.quote + ' »';
   $('shBody').textContent = ev.summary;
@@ -1196,6 +1309,10 @@ function startGame() {
   $('hudZone').textContent = ZONES[currentZone]?.name || currentZone;
   showHint('Explore le ranch. Approche-toi des dossiers dorés et appuie sur Collecter.');
   sndClick();
+  AudioSys.setZone(currentZone);
+  if (worldLights) worldLights.applyAtmos(currentZone);
+  if (Fade && !reducedMotion()) Fade.toClear(520);
+  else if (Fade) Fade.toClear(0);
 }
 
 function resetRun() {
@@ -1207,7 +1324,9 @@ function resetRun() {
   running = false;
   elapsed = 0;
   currentZone = 'ranch';
+  enteredBunker = false;
   player.pos.set(-16, 0, 18);
+  player.pos.y = 0;
   player.yaw = Math.PI;
   camYaw = Math.PI;
   camPitch = 0.28;
@@ -1216,7 +1335,9 @@ function resetRun() {
     player.object.rotation.y = player.yaw;
   }
   evidenceNodes.forEach((n) => { n.visible = true; });
-  if (tr3b) { tr3b.visible = false; setTR3BLights(false); }
+  if (tr3b) { tr3b.visible = false; setTR3BLights(false); AudioSys.setHum(false); }
+  if (worldLights) worldLights.applyAtmos('ranch');
+  AudioSys.setZone('ranch');
   $('hudEvidence').textContent = '0 / ' + EVIDENCE.length;
   $('hudTime').textContent = '0:00';
   $('hudZone').textContent = 'Ranch';
@@ -1264,7 +1385,11 @@ function loop() {
       if (mark) mark.position.y = 0.35 + Math.sin(t * 2.4 + id.length) * 0.08;
       n.rotation.y += dt * 0.5;
     });
-  } else {
+  }
+  if (pickupFx) pickupFx.update(dt, camera);
+  updateBunkerLights(bunkerFx, performance.now() / 1000);
+  if (tr3b && tr3b.visible) pulseCraft(tr3b, performance.now() / 1000, tr3bState !== 'gone');
+  if (!running) {
     // idle camera on menu: slow orbit of ranch
     if (!running && player.object && !camOverride) {
       const t = performance.now() / 1000;
@@ -1289,9 +1414,9 @@ function loop() {
     if (showFps) {
       $('fps').textContent =
         lastFps + ' fps\n' +
-        lastCalls + ' calls\n' +
-        lastTris + ' tris\n' +
-        'tier ' + gpuInfo.tier + (lowTier ? ' (low)' : '') + '\n' +
+        lastCalls + ' appels · ' + lastTris.toLocaleString('fr-CA') + ' tri\n' +
+        'palier ' + gpuInfo.tier + (qualityLow ? ' (low)' : '') +
+        (gpuInfo.type === 'override' ? ' override' : gpuInfo.type === 'fallback' ? ' FALLBACK' : '') + '\n' +
         (gpuInfo.gpu || '');
     }
   }
@@ -1339,7 +1464,11 @@ function exposeHook() {
         tr3bState = 'gone';
         tr3b.visible = false;
         setTR3BLights(false);
+        AudioSys.setHum(false);
+      } else {
+        AudioSys.setHum(true);
       }
+      if (phase === 'hover' || phase === 'flying') AudioSys.setHum(true);
       return tr3bState;
     },
     endRun,
@@ -1347,17 +1476,90 @@ function exposeHook() {
       const spots = {
         ranch: [-20, 14],
         hangar: [8, -6],
-        lab: [32, 4],
+        lab: [36, 4],
         wreck: [-10, 40],
+        entrance: [16.4, 4],
       };
       const s = spots[zone];
       if (!s) return false;
-      player.pos.set(s[0], 0, s[1]);
-      if (player.object) player.object.position.set(s[0], player.object.position.y, s[1]);
-      currentZone = zone;
-      $('hudZone').textContent = ZONES[zone]?.name || zone;
-      if (zone === 'wreck') wreckVisited = true;
+      const y = groundY(s[0], s[1]);
+      player.pos.set(s[0], y, s[1]);
+      if (player.object) player.object.position.set(s[0], y, s[1]);
+      currentZone = zone === 'entrance' ? (zoneAt(s[0], s[1]) || 'hangar') : zone;
+      $('hudZone').textContent = ZONES[currentZone]?.name || currentZone;
+      if (worldLights) worldLights.applyAtmos(currentZone === 'lab' ? 'lab' : currentZone);
+      AudioSys.setZone(currentZone);
+      if (zone === 'wreck' || currentZone === 'wreck') wreckVisited = true;
       return true;
+    },
+    get bunker() {
+      return {
+        loaded: !!(bunkerFx && bunkerFx.group),
+        labY: LAB_Y,
+        playerY: player.pos.y,
+        indoors: isIndoors(player.pos.x, player.pos.z, player.pos.y),
+      };
+    },
+    get pickupFx() { return !!(pickupFx && pickupFx.active); },
+    get audio() {
+      return {
+        get unlocked() { return AudioSys.unlocked; },
+        get muted() { return AudioSys.muted; },
+        unlock() { return AudioSys.unlock(); },
+        setMuted(v) { AudioSys.setMuted(v); syncMute(); saveSettings(); },
+        get loops() { return Object.keys(AudioSys.loops); },
+        get buffers() { return Object.keys(AudioSys.buffers); },
+      };
+    },
+    get qualityLow() { return qualityLow; },
+    debugMats(substr) {
+      const out = [];
+      scene.traverse((o) => {
+        if (!o.isMesh || !o.material) return;
+        const n = o.name || '';
+        if (substr && !n.toLowerCase().includes(substr.toLowerCase()) && !(o.material.name||'').toLowerCase().includes((substr||'').toLowerCase())) {
+          if (out.length > 40) return;
+        }
+        const list = Array.isArray(o.material) ? o.material : [o.material];
+        out.push({
+          name: n, type: o.type,
+          mats: list.map(m => ({
+            name: m && m.name, map: !!(m && m.map),
+            vc: !!(m && m.vertexColors),
+            color: m && m.color ? '#'+m.color.getHexString() : null,
+            em: m && m.emissiveIntensity,
+          })),
+          hasColorAttr: !!(o.geometry && o.geometry.getAttribute('color')),
+        });
+      });
+      return out;
+    },
+
+    debugBoxes() {
+      const out = [];
+      scene.traverse((o) => {
+        if (!o.name || o.name === '') return;
+        if (!(o.isMesh || o.isGroup || o.isInstancedMesh || o.isObject3D && o.children.length)) return;
+        if (o.parent && o.parent.name && !/^(lab-|bunker|server|prop-|evidence-|pav-|ufo|debris|hangar|tank|merged)/.test(o.name) && !/cabinet|folder|things|paperclip|machine|door|ground/.test(o.name)) return;
+        const b = new THREE.Box3().setFromObject(o);
+        if (b.isEmpty()) return;
+        out.push({
+          name: o.name, type: o.type,
+          min: [+b.min.x.toFixed(2), +b.min.y.toFixed(2), +b.min.z.toFixed(2)],
+          max: [+b.max.x.toFixed(2), +b.max.y.toFixed(2), +b.max.z.toFixed(2)],
+          size: [+(b.max.x-b.min.x).toFixed(2), +(b.max.y-b.min.y).toFixed(2), +(b.max.z-b.min.z).toFixed(2)],
+        });
+      });
+      return out;
+    },
+    get solids() { return solids.slice(0, 80).map(s => ({...s, minx:+s.minx.toFixed(1), maxx:+s.maxx.toFixed(1), minz:+s.minz.toFixed(1), maxz:+s.maxz.toFixed(1)})); },
+
+    applyTier(n) {
+      gpuInfo.tier = n;
+      gpuInfo.type = 'override';
+      qualityLow = n <= 1;
+      applyQuality();
+      return { tier: gpuInfo.tier, qualityLow };
     },
     setCamera(x, y, z, tx, ty, tz) {
       camOverride = { x, y, z, tx, ty: ty ?? 2, tz };
@@ -1402,12 +1604,35 @@ async function boot() {
   loadSettings();
   fillCredits();
   $('banner').textContent = BANNER;
+  Fade = setupFade();
+  Fade.toBlack(0);
+  AudioSys.load();
   resize();
   await initGPU();
   loader = makeLoader();
   try {
     await buildWorld((p) => { $('loadBar').style.width = Math.round(p * 100) + '%'; });
     mergeStaticByMaterial();
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const list = Array.isArray(o.material) ? o.material : [o.material];
+      const isLabKit = (o.name || '').startsWith('merged-colormap') || (o.name || '').startsWith('lab-') ||
+        list.some((m) => m && /colormap|ColorMap|Kenney/i.test(m.name || ''));
+      if (!isLabKit) return;
+      const concrete = new THREE.Color(0x8c8880);
+      list.forEach((m) => {
+        if (!m) return;
+        if (m.emissive && m.emissive.getHex() !== 0 && (m.emissiveIntensity || 0) > 0.5) return;
+        m.map = null; m.normalMap = null; m.vertexColors = false;
+        m.color = concrete.clone();
+        m.roughness = 0.88; m.metalness = 0.04;
+        m.envMapIntensity = 0; m.needsUpdate = true;
+      });
+      if (o.geometry && o.geometry.getAttribute('color')) o.geometry.deleteAttribute('color');
+    });
+    pickupFx = new PickupFX(scene);
+    applyQuality();
+    if (worldLights) worldLights.applyAtmos('ranch');
   } catch (err) {
     console.error('buildWorld:', err);
     $('loading').querySelector('.load-sub').textContent = 'Erreur de chargement. Recharge la page.';
@@ -1416,6 +1641,8 @@ async function boot() {
   $('loading').classList.add('hidden');
   showPanel('menu');
   ready = true;
+  if (Fade && !reducedMotion()) Fade.toClear(700);
+  else if (Fade) Fade.toClear(0);
   
   if (showFps) $('fps').classList.remove('hidden');
   clock.start();
@@ -1432,16 +1659,16 @@ async function boot() {
 }
 
 /* buttons */
-$('bPlay').addEventListener('click', () => { unlockAudio(); if (!collected.size && !ended) { /* fresh */ } if (ended) resetRun(); startGame(); });
+$('bPlay').addEventListener('click', () => { AudioSys.unlock(); if (!collected.size && !ended) { /* fresh */ } if (ended) resetRun(); startGame(); });
 $('bHow').addEventListener('click', () => { sndClick(); showPanel('how'); });
-$('bHowGo').addEventListener('click', () => { unlockAudio(); if (ended) resetRun(); startGame(); });
+$('bHowGo').addEventListener('click', () => { AudioSys.unlock(); if (ended) resetRun(); startGame(); });
 $('bCredits').addEventListener('click', () => { sndClick(); fillCredits(); showPanel('credits'); });
 $('bBarCredits').addEventListener('click', () => { sndClick(); running = false; hideGameplayUI(); fillCredits(); showPanel('credits'); });
 $('bBarMenu').addEventListener('click', () => { sndClick(); goMenu(); });
-$('bReplay').addEventListener('click', () => { unlockAudio(); replay(); });
+$('bReplay').addEventListener('click', () => { AudioSys.unlock(); replay(); });
 $('bResMenu').addEventListener('click', () => { sndClick(); resetRun(); goMenu(); });
 $('bSheetOk').addEventListener('click', () => { sndClick(); closeSheet(); });
-$('bMute').addEventListener('click', () => { muted = !muted; if (!muted) unlockAudio(); syncMute(); saveSettings(); });
+$('bMute').addEventListener('click', () => { if (!AudioSys.muted) AudioSys.unlock(); toggleMute(); });
 $('bFull').addEventListener('click', async () => {
   try {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();

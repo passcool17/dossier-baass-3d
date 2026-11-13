@@ -56,7 +56,25 @@ const PRECACHE = [
   './assets/truck-v1.glb',
   './assets/ufo-v1.glb',
   './assets/water-tower-v1.glb',
-  './assets/tr3b-v1.glb'
+  './assets/tr3b-v1.glb',
+  './mood.js',
+  './props.js',
+  './assets/sfx/ui_click.ogg',
+  './assets/sfx/ui_open.ogg',
+  './assets/sfx/pickup.ogg',
+  './assets/sfx/tr3b_hum.ogg',
+  './assets/sfx/door.ogg',
+  './assets/sfx/bunker_blip.ogg',
+  './assets/sfx/amb_desert.mp3',
+  './assets/sfx/amb_hangar.mp3',
+  './assets/sfx/amb_bunker.mp3',
+  './assets/props-folder-v1.glb',
+  './assets/props-folder-manilla-v1.glb',
+  './assets/props-paperclip-v1.glb',
+  './assets/props-cabinet-rusty-v1.glb',
+  './assets/props-lab-cabinet-v1.glb',
+  './assets/props-lab-things-v1.glb',
+  './assets/props-server-rack-v1.glb',
 ];
 
 self.addEventListener('install', (e) => {

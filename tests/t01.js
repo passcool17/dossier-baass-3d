@@ -1,4 +1,4 @@
-// v0.1.0 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
+// v0.2.0 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
 // TR-3B, end screen, replay, credits, calls < 100. 412×915 and 915×412.
 const { chromium } = require('/workspace/tools3d/node_modules/playwright-core');
 const { pathToFileURL } = require('url');
@@ -15,6 +15,7 @@ async function open(browser, w, h) {
   const ctx = await browser.newContext({
     viewport: { width: w, height: h },
     hasTouch: true, isMobile: w < 600, deviceScaleFactor: 1, locale: 'fr-CA',
+    serviceWorkers: 'block',
   });
   const page = await ctx.newPage();
   const logs = [];
@@ -96,7 +97,7 @@ async function runView(browser, w, h, shots) {
   await page.evaluate(() => __game.showCredits());
   await sleep(200);
   const creditText = await page.evaluate(() => document.getElementById('crdList').innerText);
-  const needed = ['Kenney', 'Quaternius', 'hat_my_guy', 'Dylusion', 'CC0', 'CC BY-NC'];
+  const needed = ['Kenney', 'Quaternius', 'hat_my_guy', 'Dylusion', 'CC0', 'CC BY-NC', 'PolyDavid', 'Amiel Goco', 'Naked Singularity', 'Renafox', 'Spellkaze', 'CC BY 4.0'];
   for (const n of needed) ok(prefix + 'credits.' + n, creditText.includes(n), n + ' missing');
   if (shots) await page.screenshot({ path: OUT + '/dossier-baass-3d-credits-' + w + '.png', type: 'png' });
 
@@ -118,19 +119,98 @@ async function runView(browser, w, h, shots) {
   }
   ok(prefix + 'wreck.visited', await page.evaluate(() => __game.wreckVisited) === true);
 
-  // collect all evidence
+  // bunker: lab is underground
+  await page.evaluate(() => __game.goto('lab'));
+  await sleep(400);
+  const bunk = await page.evaluate(() => ({
+    zone: __game.zone,
+    y: __game.player.y,
+    bunker: __game.bunker,
+    name: !!document.querySelector('canvas'),
+  }));
+  ok(prefix + 'bunker.zone', bunk.zone === 'lab', bunk);
+  ok(prefix + 'bunker.underground', bunk.y < -1 && bunk.bunker.loaded && bunk.bunker.indoors, bunk);
+
+  // entrance at the surface
+  const ent = await page.evaluate(() => {
+    __game.goto('entrance');
+    return { y: __game.player.y, x: __game.player.x, z: __game.player.z, bunker: __game.bunker };
+  });
+  ok(prefix + 'bunker.entrance.surface', ent.y > -1.2 && ent.y < 0.6, ent);
+
+  // detect-gpu / tier
+  const gpu = await page.evaluate(() => ({ gpu: __game.gpu, qualityLow: __game.qualityLow }));
+  ok(prefix + 'gpu.present', gpu.gpu && typeof gpu.gpu.tier === 'number', gpu);
+  const tier1 = await page.evaluate(() => __game.applyTier(1));
+  ok(prefix + 'gpu.tier1.low', tier1.qualityLow === true && tier1.tier === 1, tier1);
+  const tier3 = await page.evaluate(() => __game.applyTier(3));
+  ok(prefix + 'gpu.tier3.high', tier3.qualityLow === false && tier3.tier === 3, tier3);
+  // restore default-ish low for llvmpipe later; apply 2 as silent fallback default
+  await page.evaluate(() => __game.applyTier(2));
+
+  // audio unlock + mute (Playwright evaluate may resume AudioContext)
+  const au0 = await page.evaluate(async () => {
+    const before = { unlocked: __game.audio.unlocked, loops: __game.audio.loops.slice(), muted: __game.audio.muted };
+    const okUnlock = await __game.audio.unlock();
+    return {
+      before,
+      okUnlock,
+      unlocked: __game.audio.unlocked,
+      buffers: __game.audio.buffers.slice(),
+      loops: __game.audio.loops.slice(),
+      muted: __game.audio.muted,
+    };
+  });
+  R[prefix + 'audio.unlock'] = au0;
+  ok(prefix + 'audio.buffers', (au0.buffers || []).includes('ui_click') && (au0.buffers || []).includes('amb_desert'), au0);
+  // mute via API then M key
+  await page.evaluate(() => __game.audio.setMuted(true));
+  const muted = await page.evaluate(() => __game.audio.muted);
+  ok(prefix + 'audio.muted', muted === true, muted);
+  await page.keyboard.press('KeyM');
+  await sleep(150);
+  const unmuted = await page.evaluate(() => ({ muted: __game.audio.muted, pressed: document.getElementById('bMute').getAttribute('aria-pressed') }));
+  ok(prefix + 'audio.M', unmuted.muted === false && unmuted.pressed === 'false', unmuted);
+  // persist: settings key
+  const persisted = await page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('baass.dossier3d.settings.v1') || '{}'); } catch { return {}; }
+  });
+  ok(prefix + 'audio.persist', persisted.muted === false, persisted);
+
+  // pickup FX (non-silent collect)
+  await page.evaluate(() => { __game.goto('lab'); });
+  await sleep(200);
+  const fx = await page.evaluate(() => {
+    // pick an uncollected evidence in lab
+    const ids = __game.evidence.filter((id) => !__game.collected.includes(id));
+    const id = ids.find((i) => i === 'area-lift') || ids[0];
+    const r = __game.collect(id);
+    return { r, id, active: __game.pickupFx, collected: __game.collected.slice() };
+  });
+  ok(prefix + 'pickup.started', fx.r === true && (fx.active === true || fx.collected.includes(fx.id)), fx);
+  await sleep(1400);
+  const fx2 = await page.evaluate(() => ({
+    active: __game.pickupFx,
+    sheet: !document.getElementById('sheet').classList.contains('hidden'),
+  }));
+  ok(prefix + 'pickup.sheet', fx2.sheet === true && fx2.active === false, fx2);
+  await page.evaluate(() => { document.getElementById('sheet').classList.add('hidden'); __game.collectSilent && 0; });
+  // close sheet properly
+  await page.evaluate(() => { const b = document.getElementById('bSheetOk'); if (b) b.click(); });
+  await sleep(200);
+
+  // credits include Sketchfab CC BY and Kenney audio
+
+  // collect remaining evidence silently (pickup test already took one)
   const ids = await page.evaluate(() => __game.evidence);
   ok(prefix + 'evidence.count', ids.length === 8, ids);
   for (const id of ids) {
-    const r = await page.evaluate((i) => __game.collect(i), id);
-    ok(prefix + 'collect.' + id, r === true);
-    await sleep(80);
-    // close sheet
-    await page.evaluate(() => {
-      const b = document.getElementById('bSheetOk');
-      if (b && !document.getElementById('sheet').classList.contains('hidden')) b.click();
-    });
-    await sleep(80);
+    const r = await page.evaluate((i) => {
+      if (__game.collected.includes(i)) return 'already';
+      return __game.collectSilent(i);
+    }, id);
+    ok(prefix + 'collect.' + id, r === true || r === 'already', r);
+    await sleep(40);
   }
   ok(prefix + 'collected.all', (await page.evaluate(() => __game.collected.length)) === 8);
 

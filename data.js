@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D — textes, preuves, crédits. v0.1.1
+/* Dossier BAASS 3D — textes, preuves, crédits. v0.2.0
    Les citations sont des extraits verbatim du BAASS Project Management Plan
    (2 décembre 2008, contrat HHM402-08-C-0072, document public DOW-UAP-D168).
    Chaque citation a été reprise des jeux 2D déjà vérifiés, puis revérifiée
@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -120,8 +120,8 @@ export const EVIDENCE = [
 
 export const ZONES = {
   ranch: { id: 'ranch', name: 'Ranch', x0: -42, x1: -2, z0: -18, z1: 24 },
-  hangar: { id: 'hangar', name: 'Hangar', x0: -2, x1: 26, z0: -16, z1: 26 },
-  lab: { id: 'lab', name: 'Laboratoire', x0: 26, x1: 56, z0: -12, z1: 22 },
+  hangar: { id: 'hangar', name: 'Hangar', x0: -2, x1: 22, z0: -16, z1: 26 },
+  lab: { id: 'lab', name: 'Laboratoire', x0: 22, x1: 62, z0: -6, z1: 24 },
   wreck: { id: 'wreck', name: 'Site de l’épave', x0: -28, x1: 8, z0: 28, z1: 62 },
 };
 
@@ -219,11 +219,67 @@ export const CREDITS = [
     note: 'TR-3B by Dylusion, CC BY-NC 4.0, Sketchfab. Jeu gratuit, sans publicité, usage non commercial (condition de la licence NC).',
   },
   {
-    name: 'Chemise de dossier et classeur (modèles originaux du jeu)',
-    author: 'Arcade 3D · PassCool_17',
-    license: 'Originaux, fournis avec le jeu',
+    name: '(Free) Low Poly Document File Folder',
+    author: 'PolyDavid',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/free-low-poly-document-file-folder-eb55498ef9bc4358891816a9922d93a8',
+    note: 'Chemises de dossier du jeu. Variante Manilla : https://sketchfab.com/3d-models/free-low-poly-document-file-folder-manilla-ba725589a1074659a7007e596ccf40da',
+  },
+  {
+    name: '(Free) Low Poly Document File Folder — Manilla',
+    author: 'PolyDavid',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/free-low-poly-document-file-folder-manilla-ba725589a1074659a7007e596ccf40da',
+    note: 'Variante manille des chemises PolyDavid.',
+  },
+  {
+    name: 'Paper Clip Box',
+    author: 'PolyDavid',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/paper-clip-box-0bc35b02979146179ad2733bc9303291',
+    note: 'Boîte de trombones sur les bureaux du laboratoire.',
+  },
+  {
+    name: 'Rusty Filing Cabinet',
+    author: 'Amiel Goco',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/rusty-filing-cabinet-619484b78fbe449ea5c0cdb68e8f2bd6',
+    note: 'Classeur du laboratoire souterrain.',
+  },
+  {
+    name: 'Laboratory Cabinet Storage | PBR Low poly | FREE',
+    author: 'Naked Singularity Studio',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/laboratory-cabinet-storage-pbr-low-poly-free-6c5d3bde09dd4f55ad973d8429441190',
+    note: 'Armoire de laboratoire. Le verre est en alpha simple, sans transmission.',
+  },
+  {
+    name: 'Lab Things',
+    author: 'Renafox',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/lab-things-6ed351eea02e4aefb6c3aad80a763890',
+    note: 'Instruments de laboratoire.',
+  },
+  {
+    name: 'Server Rack',
+    author: 'Spellkaze',
+    license: 'CC BY 4.0',
+    url: 'https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218',
+    note: 'Baies de serveurs du bunker.',
+  },
+  {
+    name: 'Interface Sounds 1.0 et Sci-Fi Sounds',
+    author: 'Kenney (www.kenney.nl)',
+    license: 'CC0 1.0',
+    url: 'https://kenney.nl/assets/interface-sounds',
+    note: 'Clics, collecte, bourdonnement TR-3B, porte. Sci-Fi : https://kenney.nl/assets/sci-fi-sounds',
+  },
+  {
+    name: 'Ambiances ranch, hangar et bunker',
+    author: 'Arcade 3D · PassCool_17, générées avec MusicGen (facebook/musicgen-small, local)',
+    license: 'Création originale du jeu',
     url: '',
-    note: 'Les modèles Sketchfab CC BY prévus (chemises PolyDavid, Lab Things de Renafox, Rusty Filing Cabinet d’Amiel Goco) n’ont pas pu être téléchargés : l’API Sketchfab exige un compte (HTTP 401). Remplacés par ces modèles simples, faits pour le jeu.',
+    note: 'Lits sonores instrumentaux, sans voix, générés sur la box pour ce jeu.',
   },
   {
     name: 'Three.js r170, detect-gpu 5.0.70, meshopt, KTX2 / Basis',
@@ -231,6 +287,64 @@ export const CREDITS = [
     license: 'MIT / Apache-2.0 selon le composant',
     url: 'https://threejs.org/',
     note: 'Moteur 3D, détection de puce, compression des maillages et textures.',
+  },
+];
+
+
+export const SOUND_CREDITS = [
+  {
+    file: 'assets/sfx/ui_click.ogg',
+    use: 'Clic des boutons',
+    source: 'click_001, Interface Sounds by Kenney (https://kenney.nl/assets/interface-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/ui_open.ogg',
+    use: 'Ouverture d’un panneau',
+    source: 'open_002, Interface Sounds by Kenney (https://kenney.nl/assets/interface-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/pickup.ogg',
+    use: 'Collecte d’une preuve',
+    source: 'confirmation_002, Interface Sounds by Kenney (https://kenney.nl/assets/interface-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/tr3b_hum.ogg',
+    use: 'Bourdonnement du TR-3B (boucle pendant le survol)',
+    source: 'spaceEngineLow_003, Sci-Fi Sounds by Kenney (https://kenney.nl/assets/sci-fi-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/door.ogg',
+    use: 'Porte du bunker',
+    source: 'doorOpen_001, Sci-Fi Sounds by Kenney (https://kenney.nl/assets/sci-fi-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/bunker_blip.ogg',
+    use: 'Accès bunker',
+    source: 'forceField_002, Sci-Fi Sounds by Kenney (https://kenney.nl/assets/sci-fi-sounds)',
+    license: 'CC0 1.0',
+  },
+  {
+    file: 'assets/sfx/amb_desert.mp3',
+    use: 'Ambiance ranch / désert (boucle)',
+    source: 'Généré avec MusicGen (facebook/musicgen-small, local, CPU) pour ce jeu, à partir d’une invite « desert wind ».',
+    license: 'Création originale du jeu',
+  },
+  {
+    file: 'assets/sfx/amb_hangar.mp3',
+    use: 'Ambiance hangar (boucle)',
+    source: 'Généré avec MusicGen (facebook/musicgen-small, local, CPU) pour ce jeu, à partir d’une invite « hangar hum ».',
+    license: 'Création originale du jeu',
+  },
+  {
+    file: 'assets/sfx/amb_bunker.mp3',
+    use: 'Ambiance bunker / laboratoire (boucle)',
+    source: 'Généré avec MusicGen (facebook/musicgen-small, local, CPU) pour ce jeu, à partir d’une invite « bunker drone ».',
+    license: 'Création originale du jeu',
   },
 ];
 
