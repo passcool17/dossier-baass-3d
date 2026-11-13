@@ -1,14 +1,87 @@
-# Dossier BAASS · 3D — v0.2.0
+# Dossier BAASS · 3D — v0.2.1
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=6c8de4e
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=COMMIT_SHORT (à mettre à jour après publication)
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), 13 novembre 2026, matin (heure de Toronto). La v0.1.1 était `e22f0b18ab4a1b778e4503ff312542498bea3cb7` (e22f0b1), docs `6cbddfe`.
-- État : v0.2.0 — laboratoire souterrain (bunker), accessoires Sketchfab CC BY 4.0, son, ambiance, detect-gpu comme c204-2026. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : `COMMIT_FULL` (à mettre à jour), 13 novembre 2026 (heure de Toronto). La v0.2.0 était `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), docs `ccc0538`. La v0.1.1 était `e22f0b1`.
+- État : v0.2.1 — passage visuel : textures PBR CC0 (bunker et désert), ciel de crépuscule, menu cinématique autour du TR-3B, collision de caméra, effet de collecte plus long. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
 Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas une preuve de physique nouvelle ni d’engin extraterrestre. L’histoire et le site sont une fiction. Les citations, elles, sont des extraits mot pour mot, vérifiés page par page.
 
+
+
+## v0.2.1 — passage visuel (13 nov. 2026)
+
+Polish demandé après la v0.2.0, pour que le jeu ne se lise plus comme un prototype (règle de Pascal). `VERSION` **0.2.1**.
+
+### Laboratoire / bunker
+
+Textures PBR CC0 d’[ambientCG](https://ambientcg.com/), 1024 px, KTX2 (ETC1S couleur/ORM, UASTC normales, mipmaps), UV en mètres, matériaux partagés :
+
+| Fichier | Source | Licence | Usage | Poids (3 cartes) |
+|---|---|---|---|---:|
+| `assets/tex/concrete-wall-*.ktx2` | [Concrete 034](https://ambientcg.com/a/Concrete034), ambientCG | CC0 1.0 | Murs et plafond | 797 589 o |
+| `assets/tex/concrete-floor-*.ktx2` | [Concrete 003](https://ambientcg.com/a/Concrete003) (béton granuleux, taches) | CC0 1.0 | Sol du bunker, dalle du hangar | 1 850 025 o |
+| `assets/tex/grate-*.ktx2` | [Metal Walkway 010](https://ambientcg.com/a/MetalWalkway010) | CC0 1.0 | Caillebotis de la rampe (alphaTest, **sans** transmission) | 1 148 340 o |
+
+Éclairage : nappes fluorescentes froides, accents rouges de secours, cadre de porte émissif chaud, cônes factices (masqués au palier ≤ 1), brouillard plus court pour la profondeur, coins plus sombres. Les DEL des baies Spellkaze clignotent (vert / rouge / ambre, 3 InstancedMesh).
+
+### Entrée
+
+Pavillon à l’est du hangar (ouverture à x ≈ 18,5, hangar-main se termine à x ≈ 15, écart d’environ 3,5 m). Panneau « ZONE RESTREINTE » sur le linteau, au-dessus de l’ouverture (il ne la bouche plus). Bandes jaunes au sol et sur les chambranles, cadre lumineux. Collision de caméra : un rayon du personnage vers la caméra s’arrête avant les solides. La porte Kenney est ouverte, décalée au nord, à échelle 0,55. Cadrage par défaut : le joueur est un peu au sud-ouest, regard vers l’entrée.
+
+### Désert, ranch, épave
+
+| Fichier | Source | Licence | Usage | Poids |
+|---|---|---|---|---:|
+| `assets/tex/sand-*.ktx2` | [Ground 054](https://ambientcg.com/a/Ground054), ambientCG | CC0 1.0 | Sol du ranch, du désert et de l’épave | 1 749 904 o |
+
+Ciel dégradé crépuscule (1 appel, vertex colors, `fog: false`, pas de passage de rendu de plus). Silhouette de montagnes à l’horizon (1 maillage). Rochers et buissons instanciés supplémentaires : **Survival Kit** Kenney, CC0 1.0 (le téléchargement officiel du Nature Kit a renvoyé HTTP 403). Décalque de brûlé sous la soucoupe (texture originale du jeu, cercle radial).
+
+### Menu
+
+Caméra cinématique lente autour du TR-3B au-dessus de la base, au crépuscule, derrière la carte « classifié ». Le TR-3B est plus lisible en paysage qu’en portrait (la carte couvre le centre).
+
+### Collecte
+
+Durée de l’effet portée à **1,2 s** (orbe + particules), avec filet de sécurité `setTimeout`.
+
+### Budget (box, Playwright SwiftShader, `?tier=3`)
+
+Toutes les vues mesurées restent sous **100 appels**. 0 `KHR_materials_transmission`. 0 erreur console, 0 HTTP ≥ 400 sur les tests locaux. Mesures live (Chrome angle-gl) après publication.
+
+| Vue | Appels / tris (412×915, cadrages composés) |
+|---|---|
+| Menu | 45 / 45 278 |
+| Menu paysage (915×412) | 59 / 52 546 |
+| Entrée bunker | 28–50 / 27 888–45 102 selon le cadrage |
+| Rampe | 42 / 40 186 |
+| Laboratoire couloir | 31 / 31 360 |
+| Classeurs | 56 / 54 828 |
+| Serveurs | 19 / 20 268 |
+| Plafond | 23 / 24 978 |
+| Épave | 21 / 17 778 |
+| TR-3B | 24 / 24 004 |
+| HUD paysage | 41 / 33 216 |
+
+Tests : `quotes.test.mjs` **PASS**, `t01.js` 412×915 et 915×412 **PASS** (bunker, audio, palier, collecte 1,2 s, crédits, 0 erreur). Service worker : cache `dossier-baass-3d-v0.2.1`.
+
+### Captures
+
+`/workspace/games3d/dossier-baass-3d-v021-menu.png`, `menu-paysage.png`, `entree-bunker.png`, `entree-bunker-large.png`, `entree-rampe.png`, `lab-interieur.png`, `lab-cabinets.png`, `lab-serveurs.png`, `lab-salle.png`, `lab-plafond.png`, `epave-debris.png`, `epave-cote.png`, `tr3b-lights.png`, `pickup-fx.png`, `hud-paysage.png`.
+
+Les plus parlantes : `menu-paysage` (TR-3B + crépuscule), `epave-cote` et `epave-debris` (sable texturé, montagnes, ciel), `lab-serveurs` (DEL), `lab-plafond` et `lab-interieur` (béton PBR, néons), `pickup-fx` (orbe et particules, 1 / 8).
+
+### Limites honnêtes
+
+- L’entrée reste serrée contre le hangar (environ 3,5 m) : on ne peut pas reculer beaucoup sans entrer dans le hangar. Le cadrage d’ensemble (crépuscule, montagnes, cadre lumineux, panneau « ZONE RESTREINTE » sur le linteau, bandes au sol) se lit clairement. La collision évite que la caméra du joueur soit *dans* un mur ; elle peut encore se coller tout près.
+- Le laboratoire a du béton et des lumières, mais les salles Kenney restent des volumes assez « kit ».
+- Nature Kit Kenney : pas intégré (HTTP 403 sur le lien officiel). Rochers et arbustes = Survival Kit déjà présent.
+- Palier et cadence réels du **S20 FE** : non mesurés. iOS, PWA, hors ligne sur téléphone : non testés. La box est llvmpipe / SwiftShader.
+- Testeur QA n’a pas encore tourné sur la v0.2.1.
+
+Bandeau et citations : **inchangés**.
 
 ## v0.2.0 — bunker, accessoires Sketchfab, son et ambiance (13 nov. 2026)
 
@@ -205,6 +278,7 @@ Les kits ont été téléchargés uniquement depuis les pages officielles HTTPS.
 | Soucoupe de l’épave (`ufo-v1.glb`) | [hat_my_guy, Poly Pizza](https://poly.pizza/m/NgURFR5T9m) | CC0 1.0 (Public Domain) |
 | `assets/tr3b-v1.glb` (67 456 o, 2 666 tris, 2 appels) | [TR-3B by Dylusion, Sketchfab](https://sketchfab.com/3d-models/50d8e1fdffad4f8a9064e657bda9c248), livré par Rendu | **CC BY-NC 4.0** — jeu gratuit, sans pub |
 | Chemises, classeurs, armoires, instruments, baies (`props-*-v1.glb`) | Sketchfab, voir le tableau de la v0.2.0 (PolyDavid, Amiel Goco, Naked Singularity Studio, Renafox, Spellkaze) | **CC BY 4.0** |
+| Textures PBR bunker et désert (`assets/tex/*`) | [ambientCG](https://ambientcg.com/) : Concrete 034, Concrete 003, Ground 054, Metal Walkway 010 | **CC0 1.0** |
 | Sons d’interface, collecte, porte, TR-3B | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) et [Sci-Fi Sounds](https://kenney.nl/assets/sci-fi-sounds) | CC0 1.0 |
 | Ambiances ranch, hangar, bunker (`amb_*.mp3`) | MusicGen local (`facebook/musicgen-small`) | Création originale du jeu |
 | Three.js r170, detect-gpu 5.0.70, meshopt, KTX2 / Basis | importmap jsDelivr pour three ; transcodeurs **locaux** (`./vendor/basis/`, meshopt) | MIT / Apache-2.0 |

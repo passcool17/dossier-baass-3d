@@ -1,0 +1,7 @@
+Textures from ambientCG (https://ambientcg.com/), CC0 1.0 (public domain).
+- concrete-wall-*: Concrete 034, https://ambientcg.com/a/Concrete034
+- concrete-floor-*: Concrete 003, https://ambientcg.com/a/Concrete003
+- sand-*: Ground 054, https://ambientcg.com/a/Ground054
+- grate-*: Metal Walkway 010, https://ambientcg.com/a/MetalWalkway010
+
+Optimized to KTX2 (ETC1S color/ORM, UASTC normals, mipmaps) for this game.

@@ -1,10 +1,12 @@
-/* mood.js — bunker, audio, atmosphere, pickup FX. Dossier BAASS 3D v0.2.0 */
+/* mood.js — bunker, audio, atmosphere, pickup FX. Dossier BAASS 3D v0.2.1 */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const LAB_Y = -6.5;
 export const LAB_CEIL = -1.85;
 export const BUNKER = { x0: 25.6, x1: 62.4, z0: -5.0, z1: 24.4 };
-export const RAMP = { x0: 17.15, x1: 25.65, z0: 2.08, z1: 5.92 };
+export const RAMP = { x0: 19.85, x1: 26.15, z0: 2.08, z1: 5.92 };
+export const PAVILION = { x0: 18.45, x1: 19.95, z0: 1.55, z1: 6.45 };
 
 export function reducedMotion() {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -143,15 +145,15 @@ export function makeSignTex() {
   g.lineWidth = 8;
   g.strokeRect(10, 10, 492, 236);
   g.fillStyle = '#c42a1a';
-  g.font = 'bold 42px ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace';
+  g.font = 'bold 48px ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace';
   g.textAlign = 'center';
-  g.fillText('ACCÈS RESTREINT', 256, 80);
+  g.fillText('ZONE RESTREINTE', 256, 82);
   g.fillStyle = '#e8d9b0';
-  g.font = 'bold 36px ui-monospace, Menlo, Consolas, monospace';
+  g.font = 'bold 32px ui-monospace, Menlo, Consolas, monospace';
   g.fillText('BAASS  ·  NIVEAU −1', 256, 140);
   g.fillStyle = '#a89870';
   g.font = '22px ui-monospace, Menlo, Consolas, monospace';
-  g.fillText('LABORATOIRE SOUTERRAIN', 256, 190);
+  g.fillText('LABORATOIRE SOUTERRAIN', 256, 192);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -164,120 +166,461 @@ export function makeFloorTex() {
   return tex;
 }
 
+
+/* ---------- PBR textures (ambientCG CC0, KTX2) ---------- */
+export let worldTex = null;
+
+const TEX_SETS = {
+  wall: {
+    c: './assets/tex/concrete-wall-color.ktx2',
+    n: './assets/tex/concrete-wall-normal.ktx2',
+    o: './assets/tex/concrete-wall-orm.ktx2',
+  },
+  floor: {
+    c: './assets/tex/concrete-floor-color.ktx2',
+    n: './assets/tex/concrete-floor-normal.ktx2',
+    o: './assets/tex/concrete-floor-orm.ktx2',
+  },
+  sand: {
+    c: './assets/tex/sand-color.ktx2',
+    n: './assets/tex/sand-normal.ktx2',
+    o: './assets/tex/sand-orm.ktx2',
+  },
+  grate: {
+    c: './assets/tex/grate-color.ktx2',
+    n: './assets/tex/grate-normal.ktx2',
+    o: './assets/tex/grate-orm.ktx2',
+  },
+};
+
+function prepTex(tex, srgb) {
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export async function loadWorldTextures(ktx2) {
+  if (!ktx2) return null;
+  async function loadSet(urls) {
+    const map = prepTex(await ktx2.loadAsync(urls.c), true);
+    const normalMap = prepTex(await ktx2.loadAsync(urls.n), false);
+    const orm = prepTex(await ktx2.loadAsync(urls.o), false);
+    return { map, normalMap, orm };
+  }
+  try {
+    const wall = await loadSet(TEX_SETS.wall);
+    const floor = await loadSet(TEX_SETS.floor);
+    const sand = await loadSet(TEX_SETS.sand);
+    const grate = await loadSet(TEX_SETS.grate);
+    worldTex = { wall, floor, sand, grate };
+    return worldTex;
+  } catch (err) {
+    console.warn('world textures:', err);
+    worldTex = null;
+    return null;
+  }
+}
+
+export function pbrMat(maps, opts = {}) {
+  const m = new THREE.MeshStandardMaterial({
+    color: opts.color ?? 0xffffff,
+    map: maps?.map || null,
+    normalMap: maps?.normalMap || null,
+    normalScale: new THREE.Vector2(opts.normal ?? 1, opts.normal ?? 1),
+    roughness: opts.roughness ?? 0.9,
+    metalness: opts.metalness ?? 0,
+    roughnessMap: maps?.orm || null,
+    metalnessMap: maps?.orm || null,
+    aoMap: maps?.orm || null,
+    aoMapIntensity: opts.ao ?? 1,
+    envMapIntensity: 0,
+    transparent: !!opts.transparent,
+    alphaTest: opts.alphaTest ?? 0,
+    depthWrite: opts.depthWrite ?? true,
+    side: opts.side ?? THREE.FrontSide,
+  });
+  if (opts.name) m.name = opts.name;
+  return m;
+}
+
+/** BoxGeometry with UVs in metres (1 tile = `tile` m) and uv2 for aoMap. */
+export function tileBoxGeo(w, h, d, tile = 2.4) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const uv = g.attributes.uv;
+  const sizes = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) {
+    const su = sizes[f][0] / tile, sv = sizes[f][1] / tile;
+    for (let i = 0; i < 4; i++) {
+      const idx = f * 4 + i;
+      uv.setXY(idx, uv.getX(idx) * su, uv.getY(idx) * sv);
+    }
+  }
+  uv.needsUpdate = true;
+  g.setAttribute('uv2', uv.clone());
+  return g;
+}
+
+function tilePlaneGeo(w, d, tile = 2.4) {
+  const g = new THREE.PlaneGeometry(w, d);
+  const uv = g.attributes.uv;
+  const su = w / tile, sv = d / tile;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  uv.needsUpdate = true;
+  g.setAttribute('uv2', uv.clone());
+  return g;
+}
+
+export function buildHorizon(scene) {
+  const R = 170;
+  const skyGeo = new THREE.SphereGeometry(R, 28, 18);
+  const pos = skyGeo.attributes.position;
+  const cols = new Float32Array(pos.count * 3);
+  const cZ = new THREE.Color(0x0a1028);
+  const cM = new THREE.Color(0x4a2868);
+  const cH = new THREE.Color(0xff6a32);
+  const cG = new THREE.Color(0x140a08);
+  const tmp = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / R;
+    if (y > 0.18) tmp.copy(cM).lerp(cZ, Math.min(1, (y - 0.18) / 0.82));
+    else if (y > 0) tmp.copy(cH).lerp(cM, y / 0.18);
+    else tmp.copy(cH).lerp(cG, Math.min(1, -y * 2.2));
+    cols[i * 3] = tmp.r; cols[i * 3 + 1] = tmp.g; cols[i * 3 + 2] = tmp.b;
+  }
+  skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false,
+  }));
+  sky.name = 'sky-dusk';
+  sky.renderOrder = -20;
+  sky.frustumCulled = false;
+  scene.add(sky);
+
+  // Distant mountain silhouette (one merged mesh)
+  const N = 72;
+  const positions = [], indices = [];
+  const rad = 118, width = 22;
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const h = 6 + 20 * Math.pow(Math.abs(Math.sin(i * 0.55 + 0.3)), 1.15)
+      * (0.45 + 0.55 * Math.abs(Math.sin(i * 1.37 + 1.1)));
+    const c = Math.cos(a), s = Math.sin(a);
+    positions.push(c * rad, 0, s * rad);
+    positions.push(c * (rad + width), 0, s * (rad + width));
+    positions.push(c * (rad + width * 0.45), h, s * (rad + width * 0.45));
+  }
+  for (let i = 0; i < N; i++) {
+    const a = i * 3, b = (i + 1) * 3;
+    indices.push(a, b, a + 2, b, b + 2, a + 2);
+    indices.push(a + 1, a + 2, b + 1, a + 2, b + 2, b + 1);
+  }
+  const mGeo = new THREE.BufferGeometry();
+  mGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  mGeo.setIndex(indices);
+  mGeo.computeVertexNormals();
+  const mountains = new THREE.Mesh(mGeo, new THREE.MeshStandardMaterial({
+    color: 0x1a1210, roughness: 1, metalness: 0, flatShading: true, envMapIntensity: 0,
+  }));
+  mountains.name = 'mountains';
+  mountains.position.y = -0.5;
+  scene.add(mountains);
+  return { sky, mountains };
+}
+
+export function makeScorch() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(256, 256, 8, 256, 256, 248);
+  gr.addColorStop(0, 'rgba(8,6,4,0.96)');
+  gr.addColorStop(0.18, 'rgba(22,12,6,0.88)');
+  gr.addColorStop(0.42, 'rgba(40,20,8,0.55)');
+  gr.addColorStop(0.7, 'rgba(60,32,12,0.22)');
+  gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 512, 512);
+  g.globalCompositeOperation = 'multiply';
+  const s = [77];
+  for (let i = 0; i < 18; i++) {
+    g.strokeStyle = `rgba(10,6,2,${0.25 + rnd(s) * 0.45})`;
+    g.lineWidth = 1 + rnd(s) * 3;
+    g.beginPath();
+    let x = 256 + (rnd(s) - 0.5) * 40, y = 256 + (rnd(s) - 0.5) * 40;
+    g.moveTo(x, y);
+    for (let k = 0; k < 8; k++) {
+      x += (rnd(s) - 0.5) * 90;
+      y += (rnd(s) - 0.5) * 90;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(8.2, 36),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, depthWrite: false, fog: true, opacity: 0.95,
+    }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(-8, 0.05, 45);
+  mesh.name = 'scorch';
+  mesh.renderOrder = 1;
+  return mesh;
+}
+
+/** Pull the camera in if the path from look-at to the desired camera hits a solid. */
+export function placeCameraSafe(camera, desired, look, solids, pad = 0.32) {
+  const dx = desired.x - look.x, dy = desired.y - look.y, dz = desired.z - look.z;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const steps = Math.max(6, Math.ceil(len / 0.18));
+  let lx = look.x, ly = look.y, lz = look.z;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = look.x + dx * t, y = look.y + dy * t, z = look.z + dz * t;
+    if (hitSolid(x, y, z, solids, pad)) {
+      camera.position.set(lx, ly, lz);
+      camera.lookAt(look.x, look.y, look.z);
+      const d = Math.hypot(lx - look.x, ly - look.y, lz - look.z);
+      if (d < 0.85) camera.near = 0.08;
+      else if (camera.near !== 0.15) { camera.near = 0.15; camera.updateProjectionMatrix(); }
+      return true;
+    }
+    lx = x; ly = y; lz = z;
+  }
+  camera.position.set(desired.x, desired.y, desired.z);
+  camera.lookAt(look.x, look.y, look.z);
+  if (camera.near !== 0.15) { camera.near = 0.15; camera.updateProjectionMatrix(); }
+  return false;
+}
+
+function hitSolid(x, y, z, solids, pad) {
+  if (!solids) return false;
+  for (let i = 0; i < solids.length; i++) {
+    const b = solids[i];
+    const miny = (b.miny != null ? b.miny : -0.5) - 0.05;
+    const maxy = (b.maxy != null ? b.maxy : 20) + 0.05;
+    if (x > b.minx - pad && x < b.maxx + pad && z > b.minz - pad && z < b.maxz + pad && y > miny && y < maxy) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function addServerLeds(servers, scene) {
+  if (!servers || !servers.length) return { mats: [], meshes: [] };
+  const geo = new THREE.BoxGeometry(0.045, 0.03, 0.03);
+  const mk = (hex, freq, phase, name) => {
+    const m = new THREE.MeshStandardMaterial({
+      color: hex, emissive: hex, emissiveIntensity: 3.2,
+      roughness: 0.35, metalness: 0.1, envMapIntensity: 0,
+    });
+    m.name = name;
+    m.userData._em0 = 3.2;
+    m.userData.freq = freq;
+    m.userData.phase = phase;
+    return m;
+  };
+  const green = mk(0x3cff6a, 2.4, 0.1, 'led-green');
+  const red = mk(0xff2a22, 1.15, 0.7, 'led-red');
+  const amber = mk(0xffc030, 3.6, 1.4, 'led-amber');
+  const mats = [green, red, amber];
+  const places = [[], [], []];
+  servers.forEach((obj, si) => {
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const ctr = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(ctr);
+    // front is the smallest horizontal extent's outward face toward -X for these racks
+    const frontX = box.min.x - 0.02;
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 2; col++) {
+        const y = box.min.y + 0.28 + row * (size.y * 0.1);
+        const z = ctr.z - 0.12 + col * 0.24;
+        const which = (row + col + si) % 3;
+        places[which].push({ x: frontX, y, z });
+      }
+    }
+  });
+  const meshes = [];
+  const dummy = new THREE.Object3D();
+  mats.forEach((mat, i) => {
+    const list = places[i];
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(geo, mat, list.length);
+    im.name = mat.name + '-inst';
+    im.frustumCulled = false;
+    list.forEach((p, k) => {
+      dummy.position.set(p.x, p.y, p.z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      im.setMatrixAt(k, dummy.matrix);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    scene.add(im);
+    meshes.push(im);
+  });
+  return { mats, meshes };
+}
+
+
 /* ---------- ground with entrance hole ---------- */
 export function makeDesertGround(scene) {
-  const sand = makeSandTex();
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, map: sand, roughness: 0.97, metalness: 0, envMapIntensity: 0,
-  });
-  // Shape in XZ via XY then rotate: x,y of shape become x,z
+  const sandMaps = worldTex && worldTex.sand;
+  const mat = sandMaps
+    ? pbrMat(sandMaps, { color: 0xe8d2a8, roughness: 0.95, metalness: 0, normal: 1.15, name: 'sand' })
+    : new THREE.MeshStandardMaterial({
+      color: 0xffffff, map: makeSandTex(), roughness: 0.97, metalness: 0, envMapIntensity: 0,
+    });
   const s = new THREE.Shape();
-  const H = 100;
+  const H = 120;
   s.moveTo(-H, -H); s.lineTo(H, -H); s.lineTo(H, H); s.lineTo(-H, H); s.closePath();
   const hole = new THREE.Path();
-  // hole for ramp + pavilion mouth (x 15.6–25.8, z 2.0–6.0)
-  const hx0 = 16.95, hx1 = 25.85, hz0 = 2.00, hz1 = 6.00;
+  // hole for moved pavilion + ramp (x 18.25–26.35, z 2.0–6.0)
+  const hx0 = 18.25, hx1 = 26.35, hz0 = 2.00, hz1 = 6.00;
   hole.moveTo(hx0, hz0); hole.lineTo(hx1, hz0); hole.lineTo(hx1, hz1); hole.lineTo(hx0, hz1); hole.closePath();
   s.holes.push(hole);
   const geo = new THREE.ShapeGeometry(s, 2);
   geo.rotateX(-Math.PI / 2);
-  // ShapeGeometry UVs aren't tiled; set them from xz
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv;
+  const tile = 9;
   for (let i = 0; i < pos.count; i++) {
-    uv.setXY(i, (pos.getX(i) + H) / 8, (pos.getZ(i) + H) / 8);
+    uv.setXY(i, pos.getX(i) / tile, pos.getZ(i) / tile);
   }
   uv.needsUpdate = true;
+  geo.setAttribute('uv2', uv.clone());
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'ground';
   mesh.receiveShadow = false;
   scene.add(mesh);
 
-  const dirt = new THREE.Mesh(
-    new THREE.CircleGeometry(28, 24),
-    new THREE.MeshStandardMaterial({ color: 0xb8945c, roughness: 1, metalness: 0, map: sand, envMapIntensity: 0 }),
-  );
+  // Ranch dirt circle — same material, different baked UVs (no extra material)
+  const dirtGeo = new THREE.CircleGeometry(28, 32);
+  const du = dirtGeo.attributes.uv;
+  for (let i = 0; i < du.count; i++) du.setXY(i, du.getX(i) * 5.5, du.getY(i) * 5.5);
+  du.needsUpdate = true;
+  dirtGeo.setAttribute('uv2', du.clone());
+  const dirt = new THREE.Mesh(dirtGeo, mat);
   dirt.rotation.x = -Math.PI / 2;
   dirt.position.set(-18, 0.02, 2);
-  dirt.material.map = sand.clone();
-  dirt.material.map.repeat.set(8, 8);
+  dirt.name = 'ranch-dirt';
   scene.add(dirt);
 
-  const pad = new THREE.Mesh(
-    new THREE.PlaneGeometry(36, 36),
-    new THREE.MeshStandardMaterial({ color: 0x8a8878, roughness: 0.9, metalness: 0.05, envMapIntensity: 0 }),
-  );
+  // Hangar pad — concrete floor, kept west of the pavilion (x <= 16)
+  const padMaps = worldTex && worldTex.floor;
+  const padMat = padMaps
+    ? pbrMat(padMaps, { color: 0xb0aaa0, roughness: 0.9, metalness: 0.05, normal: 0.85, name: 'hangar-pad' })
+    : new THREE.MeshStandardMaterial({ color: 0x8a8878, roughness: 0.9, metalness: 0.05, envMapIntensity: 0 });
+  const pad = new THREE.Mesh(tilePlaneGeo(22, 24, 3.2), padMat);
   pad.rotation.x = -Math.PI / 2;
-  pad.position.set(12, 0.03, 4);
+  pad.position.set(7.5, 0.035, 3);
+  pad.name = 'hangar-pad';
   scene.add(pad);
 
   const wreckPad = new THREE.Mesh(
-    new THREE.CircleGeometry(16, 20),
-    new THREE.MeshStandardMaterial({ color: 0x8a6a3e, roughness: 1, metalness: 0, envMapIntensity: 0 }),
+    (() => {
+      const g = new THREE.CircleGeometry(18, 28);
+      const u = g.attributes.uv;
+      for (let i = 0; i < u.count; i++) u.setXY(i, u.getX(i) * 6, u.getY(i) * 6);
+      u.needsUpdate = true;
+      g.setAttribute('uv2', u.clone());
+      return g;
+    })(),
+    mat,
   );
   wreckPad.rotation.x = -Math.PI / 2;
-  wreckPad.position.set(-8, 0.02, 44);
+  wreckPad.position.set(-8, 0.025, 44);
+  wreckPad.name = 'wreck-pad';
   scene.add(wreckPad);
 }
 
 /* ---------- lights + atmosphere ---------- */
 export const ATMOS = {
+  dusk: {
+    bg: 0x1a1020, fogN: 48, fogF: 145,
+    ambC: 0xc09070, ambI: 0.36,
+    hemiS: 0xffb080, hemiG: 0x2a1810, hemiI: 0.92,
+    sunC: 0xff9040, sunI: 1.35, sunP: [-70, 14, 28],
+    fillC: 0x3a5080, fillI: 0.42,
+    lab1: 0, lab2: 0, door: 2.5, emer: 0.35,
+  },
   ranch: {
-    bg: 0x8a6e52, fogN: 50, fogF: 155,
-    ambC: 0xc8a070, ambI: 0.48,
-    hemiS: 0xffd4a0, hemiG: 0x6a4a28, hemiI: 1.05,
-    sunC: 0xffc080, sunI: 1.5,
-    fillC: 0x6a80a0, fillI: 0.28,
-    lab1: 0, lab2: 0,
+    bg: 0x1a1020, fogN: 48, fogF: 145,
+    ambC: 0xc09070, ambI: 0.36,
+    hemiS: 0xffb080, hemiG: 0x2a1810, hemiI: 0.92,
+    sunC: 0xff9040, sunI: 1.35, sunP: [-70, 14, 28],
+    fillC: 0x3a5080, fillI: 0.42,
+    lab1: 0, lab2: 0, door: 2.5, emer: 0.35,
   },
   hangar: {
-    bg: 0x5e584c, fogN: 36, fogF: 115,
-    ambC: 0xb0a890, ambI: 0.4,
-    hemiS: 0xd8c8a0, hemiG: 0x4a4030, hemiI: 0.82,
-    sunC: 0xffd0a0, sunI: 0.9,
-    fillC: 0xffaa55, fillI: 0.38,
-    lab1: 0, lab2: 0,
+    bg: 0x18141c, fogN: 32, fogF: 110,
+    ambC: 0xb09880, ambI: 0.32,
+    hemiS: 0xffc090, hemiG: 0x2a2018, hemiI: 0.7,
+    sunC: 0xffa060, sunI: 0.75, sunP: [-50, 18, 20],
+    fillC: 0xffaa55, fillI: 0.3,
+    lab1: 0, lab2: 0, door: 2.8, emer: 0.55,
   },
   lab: {
-    bg: 0x1a2228, fogN: 22, fogF: 70,
-    ambC: 0xb0c0c8, ambI: 0.72,
-    hemiS: 0xd8e4ea, hemiG: 0x3a3830, hemiI: 0.95,
-    sunC: 0xffffff, sunI: 0,
+    bg: 0x0c1014, fogN: 9, fogF: 38,
+    ambC: 0x7a9aaa, ambI: 0.2,
+    hemiS: 0xc8e0f0, hemiG: 0x141210, hemiI: 0.26,
+    sunC: 0xffffff, sunI: 0, sunP: [44, 20, 4],
     fillC: 0xffffff, fillI: 0,
-    lab1: 4.2, lab2: 3.4,
+    lab1: 3.4, lab2: 2.6, door: 0.4, emer: 1.15,
   },
   wreck: {
-    bg: 0x7a6248, fogN: 32, fogF: 108,
-    ambC: 0xc8a878, ambI: 0.58,
-    hemiS: 0xffc090, hemiG: 0x5a3a20, hemiI: 1.1,
-    sunC: 0xffb070, sunI: 1.65,
-    fillC: 0x8090a8, fillI: 0.45,
-    lab1: 0, lab2: 0,
+    bg: 0x1c1418, fogN: 30, fogF: 120,
+    ambC: 0xc09068, ambI: 0.4,
+    hemiS: 0xffb070, hemiG: 0x2a1810, hemiI: 0.95,
+    sunC: 0xff9038, sunI: 1.45, sunP: [-70, 12, 50],
+    fillC: 0x4a6088, fillI: 0.4,
+    lab1: 0, lab2: 0, door: 0, emer: 0,
   },
 };
 
 export function createLights(scene) {
-  const amb = new THREE.AmbientLight(0xc8a070, 0.48);
+  const amb = new THREE.AmbientLight(0xc09070, 0.36);
   scene.add(amb);
-  const hemi = new THREE.HemisphereLight(0xffd4a0, 0x6a4a28, 1.05);
+  const hemi = new THREE.HemisphereLight(0xffb080, 0x2a1810, 0.92);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffc080, 1.5);
-  sun.position.set(-40, 50, 20);
+  const sun = new THREE.DirectionalLight(0xff9040, 1.35);
+  sun.position.set(-70, 14, 28);
   sun.castShadow = false;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x6a80a0, 0.28);
-  fill.position.set(40, 25, -30);
+  const fill = new THREE.DirectionalLight(0x3a5080, 0.42);
+  fill.position.set(50, 22, -40);
   fill.castShadow = false;
   scene.add(fill);
-  const labFill = new THREE.PointLight(0xd8eeff, 0, 42);
-  labFill.position.set(44, LAB_Y + 3.4, 4);
+  // Cool fluorescent pools
+  const labFill = new THREE.PointLight(0xc8eaff, 0, 28, 1.6);
+  labFill.position.set(42, LAB_Y + 3.15, 4);
   labFill.name = 'labFill';
   scene.add(labFill);
-  const labFill2 = new THREE.PointLight(0xffe8c8, 0, 36);
-  labFill2.position.set(50, LAB_Y + 3.2, 16);
+  const labFill2 = new THREE.PointLight(0xd8f0ff, 0, 24, 1.6);
+  labFill2.position.set(52, LAB_Y + 3.05, 16);
   labFill2.name = 'labFill2';
   scene.add(labFill2);
-  const L = { amb, hemi, sun, fill, labFill, labFill2, zone: 'ranch', qualityLow: true, cones: null, emer: null };
+  // Warm doorway (visible from outside)
+  const doorFill = new THREE.PointLight(0xffc078, 0, 16, 1.5);
+  doorFill.position.set(18.2, 2.2, 4);
+  doorFill.name = 'doorFill';
+  scene.add(doorFill);
+  // Red emergency accent
+  const emerFill = new THREE.PointLight(0xff2a14, 0, 11, 2);
+  emerFill.position.set(27, LAB_Y + 3.2, 4);
+  emerFill.name = 'emerFill';
+  scene.add(emerFill);
+  const L = {
+    amb, hemi, sun, fill, labFill, labFill2, doorFill, emerFill,
+    zone: 'ranch', qualityLow: true, cones: null, emer: null,
+  };
 
   L.applyAtmos = function applyAtmos(zone) {
     const a = ATMOS[zone] || ATMOS.ranch;
@@ -286,13 +629,16 @@ export function createLights(scene) {
     const cut = q ? 0.62 : 1;
     scene.background = new THREE.Color(a.bg);
     scene.fog = new THREE.Fog(a.bg, a.fogN, a.fogF);
-    this.amb.color.setHex(a.ambC); this.amb.intensity = a.ambI * (q ? 0.9 : 1);
+    this.amb.color.setHex(a.ambC); this.amb.intensity = a.ambI * (q ? 0.95 : 1);
     this.hemi.color.setHex(a.hemiS); this.hemi.groundColor.setHex(a.hemiG);
     this.hemi.intensity = a.hemiI * (q ? 0.85 : 1);
     this.sun.color.setHex(a.sunC); this.sun.intensity = a.sunI * cut;
+    if (a.sunP) this.sun.position.set(a.sunP[0], a.sunP[1], a.sunP[2]);
     this.fill.color.setHex(a.fillC); this.fill.intensity = q ? a.fillI * 0.25 : a.fillI;
-    this.labFill.intensity = a.lab1 * (q ? 0.85 : 1);
-    this.labFill2.intensity = a.lab2 * (q ? 0.85 : 1);
+    this.labFill.intensity = a.lab1 * (q ? 0.75 : 1);
+    this.labFill2.intensity = a.lab2 * (q ? 0.7 : 1);
+    this.doorFill.intensity = (a.door || 0) * (q ? 0.7 : 1);
+    this.emerFill.intensity = (a.emer || 0) * (q ? 0.65 : 1);
     if (this.cones) this.cones.visible = !q && zone === 'lab';
   };
 
@@ -308,20 +654,27 @@ export function createLights(scene) {
 export function buildBunker(scene, { addSolid } = {}) {
   const group = new THREE.Group();
   group.name = 'bunker';
-  const concTex = makeConcreteTex(512, [132, 128, 118], 17);
-  concTex.repeat.set(2, 1.4);
-  const concMat = new THREE.MeshStandardMaterial({
-    color: 0xc8c4bc, map: concTex, roughness: 0.92, metalness: 0.04, envMapIntensity: 0,
-  });
+  const wallMaps = worldTex && worldTex.wall;
+  const floorMaps = worldTex && worldTex.floor;
+  const grateMaps = worldTex && worldTex.grate;
+  const concMat = wallMaps
+    ? pbrMat(wallMaps, { color: 0xc4c0b6, roughness: 0.9, metalness: 0.04, normal: 1.05, name: 'bunker-concrete' })
+    : new THREE.MeshStandardMaterial({
+      color: 0xc8c4bc, map: makeConcreteTex(512, [132, 128, 118], 17), roughness: 0.92, metalness: 0.04, envMapIntensity: 0,
+    });
   concMat.name = 'bunker-concrete';
-  const floorTex = makeConcreteTex(512, [104, 102, 96], 55);
-  floorTex.repeat.set(6, 5);
-  const floorMat = new THREE.MeshStandardMaterial({
-    color: 0xb0aea6, map: floorTex, roughness: 0.95, metalness: 0.03, envMapIntensity: 0,
-  });
+  const floorMat = floorMaps
+    ? pbrMat(floorMaps, { color: 0xa8a69e, roughness: 0.92, metalness: 0.03, normal: 1.1, name: 'bunker-floor' })
+    : new THREE.MeshStandardMaterial({
+      color: 0xb0aea6, map: makeConcreteTex(512, [104, 102, 96], 55), roughness: 0.95, metalness: 0.03, envMapIntensity: 0,
+    });
   floorMat.name = 'bunker-floor';
+  const grateMat = grateMaps
+    ? pbrMat(grateMaps, { color: 0x9a9aa0, roughness: 0.45, metalness: 0.75, normal: 1, alphaTest: 0.42, name: 'bunker-grate' })
+    : new THREE.MeshStandardMaterial({ color: 0x55555c, roughness: 0.45, metalness: 0.7, envMapIntensity: 0 });
   const hazardMat = new THREE.MeshStandardMaterial({
     map: makeHazardTex(), roughness: 0.7, metalness: 0.15, envMapIntensity: 0,
+    emissive: 0x3a2a00, emissiveIntensity: 0.25,
   });
   hazardMat.name = 'bunker-hazard';
 
@@ -333,8 +686,8 @@ export function buildBunker(scene, { addSolid } = {}) {
   const h = ceilY - floorY; // ~4.65
   const midY = (ceilY + floorY) / 2;
 
-  function box(w, hgt, d, mat, x, y, z, name) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, hgt, d), mat);
+  function box(w, hgt, d, mat, x, y, z, name, tile = 2.5) {
+    const m = new THREE.Mesh(tileBoxGeo(w, hgt, d, tile), mat);
     m.position.set(x, y, z);
     if (name) m.name = name;
     group.add(m);
@@ -380,7 +733,7 @@ export function buildBunker(scene, { addSolid } = {}) {
   const rcy = (0 + LAB_Y) / 2;
   const rcz = (r.z0 + r.z1) / 2;
 
-  const rampFloor = new THREE.Mesh(new THREE.BoxGeometry(len, 0.22, rw), floorMat);
+  const rampFloor = new THREE.Mesh(tileBoxGeo(len, 0.22, rw, 2.2), floorMat);
   rampFloor.name = 'bunker-ramp';
   rampFloor.position.set(rcx, rcy, rcz);
   rampFloor.rotation.z = ang;
@@ -388,21 +741,22 @@ export function buildBunker(scene, { addSolid } = {}) {
 
   const wallH = 3.2;
   for (const z of [r.z0 - 0.12, r.z1 + 0.12]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(len, wallH, 0.28), concMat);
+    const w = new THREE.Mesh(tileBoxGeo(len, wallH, 0.28, 2.4), concMat);
     w.position.set(rcx, rcy + wallH * 0.35, z);
     w.rotation.z = ang;
     w.name = 'bunker-ramp-wall';
     group.add(w);
     solid(r.x0 - 0.2, r.x1 + 0.2, z - 0.2, z + 0.2);
   }
-  const rampCeil = new THREE.Mesh(new THREE.BoxGeometry(len + 0.4, 0.22, rw + 0.6), concMat);
+  const rampCeil = new THREE.Mesh(tileBoxGeo(len + 0.4, 0.22, rw + 0.6, 2.4), concMat);
   rampCeil.position.set(rcx, rcy + 2.85, rcz);
   rampCeil.rotation.z = ang;
   rampCeil.name = 'bunker-ramp-ceil';
   group.add(rampCeil);
 
-  // Surface pavilion (entrance)
-  const px0 = 15.9, px1 = 17.35, pz0 = 1.55, pz1 = 6.45;
+  // Surface pavilion (entrance) — east of hangar-main (east face ~15)
+  const pv = PAVILION;
+  const px0 = pv.x0, px1 = pv.x1, pz0 = pv.z0, pz1 = pv.z1;
   const pyc = 1.7;
   // roof
   box(px1 - px0 + 1.2, 0.28, pz1 - pz0 + 1.0, concMat, (px0 + px1) / 2, 3.25, (pz0 + pz1) / 2, 'pav-roof');
@@ -415,27 +769,76 @@ export function buildBunker(scene, { addSolid } = {}) {
   box(0.4, 3.2, 2.3 - pz0 + 0.2, concMat, px0 - 0.15, pyc, (pz0 + 2.3) / 2, 'pav-w-s');
   box(0.4, 3.2, pz1 - 5.7 + 0.2, concMat, px0 - 0.15, pyc, (5.7 + pz1) / 2, 'pav-w-n');
   // lintel over door
-  box(0.45, 0.55, 3.6, concMat, px0 - 0.15, 3.0, 4, 'pav-lintel');
+  box(0.45, 0.85, 3.6, concMat, px0 - 0.15, 3.22, 4, 'pav-lintel');
   solid(px0 - 0.4, px0 + 0.15, pz0, 2.25);
   solid(px0 - 0.4, px0 + 0.15, 5.75, pz1);
 
-  // Hazard stripes at mouth
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 3.5), hazardMat);
-  stripe.position.set(px0 - 0.38, 1.3, 4);
+  // Hazard stripes at mouth — thicker, on frame and ground
+  // Hazard only on the jambs (sides), not a panel across the mouth
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.7, 0.28), hazardMat);
+  stripe.position.set(px0 - 0.42, 1.4, 2.28);
   stripe.name = 'pav-hazard';
   group.add(stripe);
-  const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, rw), hazardMat);
-  stripe2.position.set(r.x0 + 0.4, 0.06, rcz);
+  const stripeB = stripe.clone();
+  stripeB.position.set(px0 - 0.42, 1.4, 5.72);
+  group.add(stripeB);
+  const stripeR = stripe.clone();
+  stripeR.position.set(px0 + 0.22, 1.4, 2.28);
+  group.add(stripeR);
+  const stripeR2 = stripe.clone();
+  stripeR2.position.set(px0 + 0.22, 1.4, 5.72);
+  group.add(stripeR2);
+  const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.07, rw + 0.4), hazardMat);
+  stripe2.position.set(px0 - 1.4, 0.05, rcz);
   group.add(stripe2);
+  const stripe3 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.07, rw), hazardMat);
+  stripe3.position.set(r.x0 + 0.5, 0.06, rcz);
+  group.add(stripe3);
 
-  // Sign on west facade, south of door
-  const signMat = new THREE.MeshStandardMaterial({
-    map: makeSignTex(), roughness: 0.55, metalness: 0.1,
-    emissive: 0x22180a, emissiveIntensity: 0.35, envMapIntensity: 0,
+  // Metal grating on the ramp
+  const grate = new THREE.Mesh(tilePlaneGeo(len * 0.96, rw * 0.92, 1.15), grateMat);
+  grate.name = 'bunker-grate';
+  grate.position.set(rcx, rcy + 0.13, rcz);
+  grate.rotation.set(-Math.PI / 2, 0, ang);
+  // Plane is XY; rotateX -90 then Z=ang to follow ramp. Use same rot as ramp floor (rotation.z = ang) after making it a thin box top.
+  grate.rotation.set(0, 0, 0);
+  grate.rotation.x = -Math.PI / 2;
+  grate.rotation.y = 0;
+  // align with ramp slope: rotate around Z after X, in local
+  grate.rotation.z = 0;
+  grate.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), ang);
+  group.add(grate);
+
+  // A short grate landing at the pavilion floor
+  const grateLand = new THREE.Mesh(tilePlaneGeo(2.2, rw * 0.95, 1.1), grateMat);
+  grateLand.rotation.x = -Math.PI / 2;
+  grateLand.position.set(px0 + 0.7, 0.045, rcz);
+  grateLand.name = 'pav-grate';
+  group.add(grateLand);
+
+  // Emissive door frame (lit doorway)
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0xffe0a0, emissive: 0xffc060, emissiveIntensity: 2.4,
+    roughness: 0.4, metalness: 0.15, envMapIntensity: 0,
   });
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), signMat);
-  sign.position.set(px0 - 0.42, 2.15, 2.55);
-  sign.rotation.y = Math.PI / 2; // face west (-X)? Plane faces +Z; rot Y 90 looks toward +X. We want -X (toward hangar).
+  frameMat.name = 'pav-frame';
+  frameMat.userData._em0 = 2.4;
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.85, 0.08), frameMat);
+  fl.position.set(px0 - 0.48, 1.45, 2.35);
+  group.add(fl);
+  const fr = fl.clone(); fr.position.set(px0 - 0.48, 1.45, 5.65); group.add(fr);
+  const ft = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3.4), frameMat);
+  ft.position.set(px0 - 0.48, 2.88, 4);
+  group.add(ft);
+
+  // Sign on west facade, south of door — more emissive
+  const signMat = new THREE.MeshStandardMaterial({
+    map: makeSignTex(), roughness: 0.5, metalness: 0.1,
+    emissive: 0x4a2808, emissiveIntensity: 0.7, envMapIntensity: 0,
+  });
+  // On the lintel, above the opening — must not cover the doorway
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.55, 0.78), signMat);
+  sign.position.set(px0 - 0.55, 3.38, 4);
   sign.rotation.y = -Math.PI / 2;
   sign.name = 'pav-sign';
   group.add(sign);
@@ -487,11 +890,11 @@ export function buildBunker(scene, { addSolid } = {}) {
   });
   const fluoTubeGeo = new THREE.BoxGeometry(1.45, 0.05, 0.16);
   const fluoTubeMat = new THREE.MeshStandardMaterial({
-    color: 0xf4f8ff, emissive: 0xdceeff, emissiveIntensity: 5.5,
+    color: 0xf4f8ff, emissive: 0xdceeff, emissiveIntensity: 2.8,
     roughness: 0.35, metalness: 0, envMapIntensity: 0,
   });
   fluoTubeMat.name = 'bunker-fluo';
-  fluoTubeMat.userData._em0 = 5.5;
+  fluoTubeMat.userData._em0 = 2.8;
   const nF = fluoPositions.length + 3;
   const housings = new THREE.InstancedMesh(fluoHousingGeo, fluoHousingMat, nF);
   const tubes = new THREE.InstancedMesh(fluoTubeGeo, fluoTubeMat, nF);
@@ -530,17 +933,17 @@ export function buildBunker(scene, { addSolid } = {}) {
   group.add(tubes);
 
   // Fake light cones (sprites) — hidden on low quality
-  const coneGeo = new THREE.ConeGeometry(1.15, 2.4, 8, 1, true);
+  const coneGeo = new THREE.ConeGeometry(1.35, 3.0, 10, 1, true);
   coneGeo.rotateX(Math.PI); // tip up
   const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xdceeff, transparent: true, opacity: 0.07,
+    color: 0xc8e8ff, transparent: true, opacity: 0.09,
     depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false,
   });
   const cones = new THREE.InstancedMesh(coneGeo, coneMat, fluoPositions.length);
   cones.name = 'bunker-cones';
   cones.frustumCulled = false;
   fluoPositions.forEach(([x, z], i) => {
-    dummy.position.set(x, ceilY - 1.35, z);
+    dummy.position.set(x, ceilY - 1.65, z);
     dummy.rotation.set(0, 0, 0);
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -560,7 +963,7 @@ export function buildBunker(scene, { addSolid } = {}) {
   const emPos = [
     [27, ceilY - 0.25, 1.2], [27, ceilY - 0.25, 6.8],
     [42, ceilY - 0.25, -1.2], [59, ceilY - 0.25, 4],
-    [50, ceilY - 0.25, 22], [16.15, 2.9, 4],
+    [50, ceilY - 0.25, 22], [18.55, 2.9, 4],
   ];
   const emer = new THREE.InstancedMesh(emGeo, emMat, emPos.length);
   emer.name = 'bunker-emergency';
@@ -575,7 +978,7 @@ export function buildBunker(scene, { addSolid } = {}) {
   group.add(emer);
 
   scene.add(group);
-  return { group, cones, emer, fluoMat: fluoTubeMat, emMat };
+  return { group, cones, emer, fluoMat: fluoTubeMat, emMat, frameMat, ledMats: [] };
 }
 
 export function updateBunkerLights(bunker, t) {
@@ -585,6 +988,17 @@ export function updateBunkerLights(bunker, t) {
   if (bunker.fluoMat) {
     const f = 0.92 + 0.08 * Math.sin(t * 11) * Math.sin(t * 0.7);
     bunker.fluoMat.emissiveIntensity = (bunker.fluoMat.userData._em0 || 2.4) * f;
+  }
+  if (bunker.frameMat) {
+    bunker.frameMat.emissiveIntensity = (bunker.frameMat.userData._em0 || 2.4) * (0.88 + 0.12 * Math.sin(t * 5.5));
+  }
+  if (bunker.ledMats) {
+    for (const m of bunker.ledMats) {
+      const freq = m.userData.freq || 2;
+      const phase = m.userData.phase || 0;
+      const on = Math.sin(t * freq * Math.PI * 2 + phase) > 0.15;
+      m.emissiveIntensity = on ? (m.userData._em0 || 3) : 0.1;
+    }
   }
 }
 
@@ -768,7 +1182,7 @@ export class PickupFX {
     this.scene = scene;
     this.active = false;
     this.t = 0;
-    this.dur = 0.62;
+    this.dur = 1.2;
     this.onDone = null;
     this.origin = new THREE.Vector3();
     this._q = new THREE.Vector3();

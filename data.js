@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -120,8 +120,8 @@ export const EVIDENCE = [
 
 export const ZONES = {
   ranch: { id: 'ranch', name: 'Ranch', x0: -42, x1: -2, z0: -18, z1: 24 },
-  hangar: { id: 'hangar', name: 'Hangar', x0: -2, x1: 22, z0: -16, z1: 26 },
-  lab: { id: 'lab', name: 'Laboratoire', x0: 22, x1: 62, z0: -6, z1: 24 },
+  hangar: { id: 'hangar', name: 'Hangar', x0: -2, x1: 18.5, z0: -16, z1: 26 },
+  lab: { id: 'lab', name: 'Laboratoire', x0: 18.5, x1: 62, z0: -6, z1: 24 },
   wreck: { id: 'wreck', name: 'Site de l’épave', x0: -28, x1: 8, z0: 28, z1: 62 },
 };
 
@@ -166,7 +166,7 @@ export const CREDITS = [
     author: 'Kenney',
     license: 'CC0 1.0',
     url: 'https://kenney.nl/assets/nature-kit',
-    note: 'Licence vérifiée sur la page officielle. Les modèles de ce kit n’ont pas été retenus dans v0.1.0 (gltfpack a rejeté deux GLB) ; les arbres et rochers viennent du Survival Kit.',
+    note: 'Licence CC0 vérifiée. Le téléchargement officiel (kenney.nl/download-link) a renvoyé HTTP 403 ; les rochers et buissons supplémentaires de la v0.2.1 viennent du Survival Kit (déjà dans le jeu).',
     unused: true,
   },
   {
@@ -280,6 +280,34 @@ export const CREDITS = [
     license: 'Création originale du jeu',
     url: '',
     note: 'Lits sonores instrumentaux, sans voix, générés sur la box pour ce jeu.',
+  },
+  {
+    name: 'Concrete 034 (murs du bunker)',
+    author: 'ambientCG',
+    license: 'CC0 1.0',
+    url: 'https://ambientcg.com/a/Concrete034',
+    note: 'Texture PBR, 1024 px, KTX2 ETC1S / UASTC. Murs et plafond du bunker.',
+  },
+  {
+    name: 'Concrete 003 (sol du bunker, taches)',
+    author: 'ambientCG',
+    license: 'CC0 1.0',
+    url: 'https://ambientcg.com/a/Concrete003',
+    note: 'Texture PBR, 1024 px, KTX2. Sol du laboratoire et dalle du hangar.',
+  },
+  {
+    name: 'Ground 054 (sable / terre)',
+    author: 'ambientCG',
+    license: 'CC0 1.0',
+    url: 'https://ambientcg.com/a/Ground054',
+    note: 'Texture PBR, 1024 px, KTX2. Sol du ranch, du désert et du site d’épave.',
+  },
+  {
+    name: 'Metal Walkway 010 (caillebotis)',
+    author: 'ambientCG',
+    license: 'CC0 1.0',
+    url: 'https://ambientcg.com/a/MetalWalkway010',
+    note: 'Texture PBR avec opacité (alphaTest, sans transmission). Rampe et palier du bunker.',
   },
   {
     name: 'Three.js r170, detect-gpu 5.0.70, meshopt, KTX2 / Basis',

@@ -75,6 +75,18 @@ const PRECACHE = [
   './assets/props-lab-cabinet-v1.glb',
   './assets/props-lab-things-v1.glb',
   './assets/props-server-rack-v1.glb',
+  './assets/tex/concrete-wall-color.ktx2',
+  './assets/tex/concrete-wall-normal.ktx2',
+  './assets/tex/concrete-wall-orm.ktx2',
+  './assets/tex/concrete-floor-color.ktx2',
+  './assets/tex/concrete-floor-normal.ktx2',
+  './assets/tex/concrete-floor-orm.ktx2',
+  './assets/tex/sand-color.ktx2',
+  './assets/tex/sand-normal.ktx2',
+  './assets/tex/sand-orm.ktx2',
+  './assets/tex/grate-color.ktx2',
+  './assets/tex/grate-normal.ktx2',
+  './assets/tex/grate-orm.ktx2',
 ];
 
 self.addEventListener('install', (e) => {

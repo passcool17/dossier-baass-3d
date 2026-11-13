@@ -1,4 +1,4 @@
-// v0.2.0 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
+// v0.2.1 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
 // TR-3B, end screen, replay, credits, calls < 100. 412×915 and 915×412.
 const { chromium } = require('/workspace/tools3d/node_modules/playwright-core');
 const { pathToFileURL } = require('url');
@@ -188,7 +188,7 @@ async function runView(browser, w, h, shots) {
     return { r, id, active: __game.pickupFx, collected: __game.collected.slice() };
   });
   ok(prefix + 'pickup.started', fx.r === true && (fx.active === true || fx.collected.includes(fx.id)), fx);
-  await sleep(1400);
+  await sleep(1800);
   const fx2 = await page.evaluate(() => ({
     active: __game.pickupFx,
     sheet: !document.getElementById('sheet').classList.contains('hidden'),

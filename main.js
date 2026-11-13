@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.2.0 — Three.js r170. */
+/* Dossier BAASS 3D v0.2.1 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -16,6 +16,7 @@ import {
   groundY, isIndoors, reducedMotion,
   makeDesertGround, createLights, buildBunker, updateBunkerLights,
   AudioSys, setupFade, PickupFX, pulseCraft, fitProp, sanitizeMaterials,
+  loadWorldTextures, buildHorizon, makeScorch, placeCameraSafe, addServerLeds,
 } from './mood.js';
 
 const qs = new URLSearchParams(location.search);
@@ -102,6 +103,7 @@ const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpBox = new THREE.Box3();
 let camOverride = null;
+let menuCine = true;
 
 function $(id) { return document.getElementById(id); }
 
@@ -172,9 +174,10 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
+let ktx2Loader = null;
 function makeLoader() {
-  const ktx2 = new KTX2Loader().setTranscoderPath('./vendor/basis/').detectSupport(renderer);
-  return new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  ktx2Loader = new KTX2Loader().setTranscoderPath('./vendor/basis/').detectSupport(renderer);
+  return new GLTFLoader().setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder);
 }
 
 /* ---------- Audio (Web Audio files, unlock on first gesture) ---------- */
@@ -722,7 +725,7 @@ function updatePlayer(dt) {
     }
     mixer.update(dt);
   }
-  // camera
+  // camera — collision so we never sit inside walls
   if (!camOverride) {
     const indoor = isIndoors(player.pos.x, player.pos.z, player.pos.y) || currentZone === 'lab';
     const dist = indoor ? 3.05 : camDist;
@@ -733,9 +736,9 @@ function updatePlayer(dt) {
     const cz = player.pos.z - Math.cos(camYaw) * hd;
     let cy = player.pos.y + offY;
     if (indoor && player.pos.y < -0.5) cy = Math.min(cy, LAB_CEIL - 0.28);
-    camera.position.set(cx, cy, cz);
-    tmpV2.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
-    camera.lookAt(tmpV2);
+    tmpV2.set(player.pos.x, player.pos.y + (indoor ? 1.25 : 1.4), player.pos.z);
+    const solidsAll = solids.concat(labWalls || []);
+    placeCameraSafe(camera, { x: cx, y: cy, z: cz }, tmpV2, solidsAll, indoor ? 0.26 : 0.38);
   }
 
   const z = zoneAt(player.pos.x, player.pos.z);
@@ -865,8 +868,13 @@ function lights() {
 }
 
 async function buildWorld(onProg) {
+  if (ktx2Loader) {
+    try { await loadWorldTextures(ktx2Loader); }
+    catch (e) { console.warn('textures', e); }
+  }
   makeGround();
   lights();
+  buildHorizon(scene);
   const names = [
     'barn','shed','truck','fence','metal-fence','debris','ufo','papers',
     'folder','folder-manilla','cabinet','lab-cabinet','lab-things','server-rack','paperclip','man',
@@ -911,6 +919,17 @@ async function buildWorld(onProg) {
     { x: -22, z: 36, scale: 3.3, ry: 0.9 },
     { x: 2, z: 58, scale: 4.1, ry: 1.7 },
     { x: -26, z: 58, scale: 3.6, ry: 0.1 },
+    // distant scrub (small Survival Kit trees — Nature Kit download was 403)
+    { x: -46, z: 24, scale: 1.7, ry: 0.5 },
+    { x: -44, z: 4, scale: 1.5, ry: 1.8 },
+    { x: -36, z: -16, scale: 1.85, ry: 0.3 },
+    { x: -14, z: 64, scale: 1.6, ry: 2.2 },
+    { x: 8, z: 66, scale: 1.9, ry: 0.9 },
+    { x: -34, z: 52, scale: 1.55, ry: 1.1 },
+    { x: 14, z: 54, scale: 1.7, ry: 0.2 },
+    { x: -48, z: 44, scale: 2.0, ry: 1.4 },
+    { x: 32, z: 30, scale: 1.65, ry: 0.6 },
+    { x: -6, z: -22, scale: 1.8, ry: 2.4 },
   ];
   instanceFrom(loaded['tree-tall'], trees.slice(0, 6), { collide: true, name: 'trees-tall' });
   instanceFrom(loaded.tree, trees.slice(6), { collide: true, name: 'trees' });
@@ -921,8 +940,29 @@ async function buildWorld(onProg) {
     { x: -18, z: 50, scale: 4.0, ry: 2.0 },
     { x: 18, z: -14, scale: 2.6, ry: 0.2 },
     { x: -40, z: 40, scale: 3.5, ry: 1.5 },
+    { x: -22, z: 44, scale: 2.2, ry: 0.7 },
+    { x: -6, z: 54, scale: 2.8, ry: 1.9 },
+    { x: 4, z: 48, scale: 2.1, ry: 0.3 },
+    { x: -28, z: 8, scale: 2.4, ry: 1.3 },
+    { x: -16, z: -16, scale: 1.9, ry: 2.1 },
+    { x: 8, z: -20, scale: 2.5, ry: 0.5 },
+    { x: -34, z: 32, scale: 2.0, ry: 0.8 },
+    { x: 6, z: 38, scale: 1.8, ry: 1.6 },
+    { x: -12, z: 62, scale: 2.7, ry: 0.1 },
+    { x: -42, z: 18, scale: 2.3, ry: 2.5 },
   ];
   instanceFrom(loaded['rock-sand'], rocks, { collide: true, name: 'rocks' });
+  const rocks2 = [
+    { x: -24, z: 48, scale: 1.6, ry: 0.4 },
+    { x: -2, z: 52, scale: 1.9, ry: 1.1 },
+    { x: -14, z: 36, scale: 1.4, ry: 2.0 },
+    { x: 12, z: 44, scale: 1.7, ry: 0.6 },
+    { x: -36, z: -4, scale: 2.0, ry: 1.5 },
+    { x: -20, z: 20, scale: 1.5, ry: 0.2 },
+    { x: 20, z: 32, scale: 1.8, ry: 2.2 },
+    { x: -8, z: 28, scale: 1.3, ry: 0.9 },
+  ];
+  instanceFrom(loaded.rock, rocks2, { collide: true, name: 'rocks-grey' });
 
   // —— Hangar compound (industrial × 8) ——
   // building-l ~2.08 × 1.87 × 1.92 → ×8 ≈ 16.6 × 15 × 15.4, origin not centered
@@ -937,15 +977,15 @@ async function buildWorld(onProg) {
   const containers = [
     { x: 2, z: -2, ry: 0, scale: S },
     { x: 2, z: 4, ry: 0, scale: S },
-    { x: 20, z: -2, ry: Math.PI / 2, scale: S },
+    { x: 8, z: 14, ry: Math.PI / 2, scale: S },
   ];
   instanceFrom(loaded['container-a'], containers, { collide: true, name: 'containers' });
   const boxes = [
     { x: 6, z: -8, ry: 0.2, scale: 1 },
     { x: 7.2, z: -8, ry: 0.1, scale: 1 },
     { x: 6.4, z: -6.9, ry: 0.7, scale: 1 },
-    { x: 16, z: 10, ry: 0.4, scale: 1 },
-    { x: 17, z: 10.6, ry: 0, scale: 1 },
+    { x: 7.2, z: 10, ry: 0.4, scale: 1 },
+    { x: 8.1, z: 10.6, ry: 0, scale: 1 },
   ];
   instanceFrom(loaded['box-large'], boxes, { collide: true, name: 'boxes' });
   placeGLB(loaded['machine-outdoor'], { x: 16, z: -8, ry: -0.4, name: 'machine-out', collide: true });
@@ -958,7 +998,7 @@ async function buildWorld(onProg) {
   });
   if (worldLights) worldLights.cones = bunkerFx.cones;
   // entrance blast door at the pavilion (surface)
-  placeGLB(loaded['gate-door'], { x: 15.85, z: 4, y: 0, ry: Math.PI / 2, name: 'bunker-door', collide: false });
+  placeGLB(loaded['gate-door'], { x: 19.6, z: 9.4, y: 0, ry: Math.PI / 2, scale: 0.55, name: 'bunker-door', collide: false });
   function tintLabKit(obj) {
     const concrete = new THREE.Color(0x8c8880);
     obj.traverse((o) => {
@@ -994,8 +1034,10 @@ async function buildWorld(onProg) {
   placeFitted(loaded.cabinet, { x: 46, z: 9.35, y: labY, ry: Math.PI / 2, fit: 1.32, name: 'lab-cabinet-rusty-2', collide: true });
   placeFitted(loaded['lab-cabinet'], { x: 54.4, z: 1.4, y: labY, ry: Math.PI, fit: 1.7, name: 'lab-cabinet-glass', collide: true });
   placeFitted(loaded['lab-things'], { x: 47.4, z: 1.2, y: labY, ry: 0.15, fit: 1.45, name: 'lab-things', collide: true });
-  placeFitted(loaded['server-rack'], { x: 58.2, z: 6, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-1', collide: true });
-  placeFitted(loaded['server-rack'], { x: 58.2, z: 8.1, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-2', collide: true });
+  const server1 = placeFitted(loaded['server-rack'], { x: 58.2, z: 6, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-1', collide: true });
+  const server2 = placeFitted(loaded['server-rack'], { x: 58.2, z: 8.1, y: labY, ry: -Math.PI / 2, fit: 1.95, name: 'server-2', collide: true });
+  const leds = addServerLeds([server1, server2], scene);
+  if (bunkerFx && leds && leds.mats) bunkerFx.ledMats = leds.mats;
   placeFitted(loaded['lab-things'], { x: 53, z: 16.4, y: labY, ry: 0.4, fit: 1.35, name: 'lab-things-2', collide: true });
   placeFitted(loaded.paperclip, { x: 48.6, z: 7.2, y: labY, ry: 0.6, fit: 0.12, name: 'paperclip-1', collide: false });
   placeFitted(loaded.paperclip, { x: 51.2, z: 15.1, y: labY, ry: -0.3, fit: 0.12, name: 'paperclip-2', collide: false });
@@ -1063,6 +1105,7 @@ async function buildWorld(onProg) {
   // recompute solid
   solids.pop();
   addSolidFrom(ufo);
+  scene.add(makeScorch());
   const debrisPlaces = [
     { x: -2.2, z: 48.2, ry: 0.5, scale: 1.65 },
     { x: -14.1, z: 50.0, ry: 2.1, scale: 1.35 },
@@ -1297,11 +1340,28 @@ function hideGameplayUI() {
   $('bAct').classList.add('hidden');
 }
 
+function setMenuCine(on) {
+  menuCine = !!on;
+  if (on) {
+    if (tr3b) {
+      tr3b.visible = true;
+      tr3b.position.set(10, 16.2, 6);
+      tr3b.rotation.set(0.06, 0, 0);
+      setTR3BLights(true);
+    }
+    if (worldLights) worldLights.applyAtmos('dusk');
+  } else if (tr3bState === 'idle' && tr3b) {
+    tr3b.visible = false;
+    setTR3BLights(false);
+  }
+}
+
 function startGame() {
   hidePanels();
   closeSheet();
   running = true;
   ended = false;
+  setMenuCine(false);
   runStart = performance.now();
   elapsed = 0;
   showGameplayUI();
@@ -1349,6 +1409,7 @@ function goMenu() {
   if (document.pointerLockElement) document.exitPointerLock();
   hideGameplayUI();
   showPanel('menu');
+  setMenuCine(true);
   $('bPlay').focus();
 }
 
@@ -1389,13 +1450,17 @@ function loop() {
   if (pickupFx) pickupFx.update(dt, camera);
   updateBunkerLights(bunkerFx, performance.now() / 1000);
   if (tr3b && tr3b.visible) pulseCraft(tr3b, performance.now() / 1000, tr3bState !== 'gone');
-  if (!running) {
-    // idle camera on menu: slow orbit of ranch
-    if (!running && player.object && !camOverride) {
-      const t = performance.now() / 1000;
-      const ang = t * 0.12;
-      camera.position.set(-12 + Math.cos(ang) * 22, 12, 6 + Math.sin(ang) * 22);
-      camera.lookAt(-18, 2.5, 2);
+  if (!running && !camOverride) {
+    // cinematic: slow orbit of the TR-3B over the base at dusk
+    const t = performance.now() / 1000;
+    const ang = t * 0.085;
+    const rad = 24;
+    camera.position.set(10 + Math.cos(ang) * rad, 10.5, 6 + Math.sin(ang) * rad);
+    camera.lookAt(10, 13.5, 6);
+    if (tr3b && menuCine) {
+      tr3b.position.set(10, 15.4 + Math.sin(t * 0.7) * 0.45, 6);
+      tr3b.rotation.y = t * 0.08;
+      tr3b.rotation.x = 0.06;
     }
   }
   if (camOverride) {
@@ -1478,14 +1543,22 @@ function exposeHook() {
         hangar: [8, -6],
         lab: [36, 4],
         wreck: [-10, 40],
-        entrance: [16.4, 4],
+        entrance: [16.55, 1.85],
+        ramp: [22.5, 4],
       };
       const s = spots[zone];
       if (!s) return false;
       const y = groundY(s[0], s[1]);
       player.pos.set(s[0], y, s[1]);
       if (player.object) player.object.position.set(s[0], y, s[1]);
-      currentZone = zone === 'entrance' ? (zoneAt(s[0], s[1]) || 'hangar') : zone;
+      if (zone === 'entrance') {
+        camYaw = 0.92;
+        camPitch = 0.12;
+      } else if (zone === 'ramp') {
+        camYaw = Math.PI / 2;
+        camPitch = 0.22;
+      }
+      currentZone = zone === 'entrance' || zone === 'ramp' ? (zoneAt(s[0], s[1]) || 'hangar') : zone;
       $('hudZone').textContent = ZONES[currentZone]?.name || currentZone;
       if (worldLights) worldLights.applyAtmos(currentZone === 'lab' ? 'lab' : currentZone);
       AudioSys.setZone(currentZone);
@@ -1632,7 +1705,7 @@ async function boot() {
     });
     pickupFx = new PickupFX(scene);
     applyQuality();
-    if (worldLights) worldLights.applyAtmos('ranch');
+    if (worldLights) worldLights.applyAtmos('dusk');
   } catch (err) {
     console.error('buildWorld:', err);
     $('loading').querySelector('.load-sub').textContent = 'Erreur de chargement. Recharge la page.';
@@ -1640,6 +1713,7 @@ async function boot() {
   }
   $('loading').classList.add('hidden');
   showPanel('menu');
+  setMenuCine(true);
   ready = true;
   if (Fade && !reducedMotion()) Fade.toClear(700);
   else if (Fade) Fade.toClear(0);
