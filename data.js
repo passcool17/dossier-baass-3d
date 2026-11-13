@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D — textes, preuves, crédits. v0.1.0
+/* Dossier BAASS 3D — textes, preuves, crédits. v0.1.1
    Les citations sont des extraits verbatim du BAASS Project Management Plan
    (2 décembre 2008, contrat HHM402-08-C-0072, document public DOW-UAP-D168).
    Chaque citation a été reprise des jeux 2D déjà vérifiés, puis revérifiée
@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';

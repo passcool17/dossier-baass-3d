@@ -1,13 +1,33 @@
-# Dossier BAASS · 3D — v0.1.0
+# Dossier BAASS · 3D — v0.1.1
 
 - Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=35f28a3
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
 - Commit : `35f28a355664325296b5890f3629acf57128397d` (35f28a3), 12 novembre 2026, 22:25 (heure de Toronto)
-- État : v0.1.0 — première version jouable, en ligne sur GitHub Pages. Enquêteur fictif sur un site secret (ranch, hangar, laboratoire, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- État : v0.1.1 — menu paysage compact (correction QA). Première version jouable en ligne depuis la v0.1.0. Enquêteur fictif sur un site secret (ranch, hangar, laboratoire, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
 Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas une preuve de physique nouvelle ni d’engin extraterrestre. L’histoire et le site sont une fiction. Les citations, elles, sont des extraits mot pour mot, vérifiés page par page.
+
+## v0.1.1 — menu en paysage (12 nov. 2026, soir)
+
+Correction du bug QA (priorité basse) : à 915×412, le panneau du menu mesurait 364 px de haut, le bouton **Commandes** était collé au bord inférieur et **Crédits** était sous le pli (`top` 420 > 412). Il fallait défiler pour voir les trois boutons.
+
+En paysage court (`orientation: landscape` et `max-height: 500px`, donc aussi 844×390) :
+
+- le menu devient une grille : texte à gauche, les trois boutons à droite (cible 44 px conservée) ;
+- padding et polices un peu plus compacts, `dvh` et `safe-area` ;
+- tout le panneau tient sans défilement (195 px de haut à 915×412, boutons entièrement visibles, `Crédits.bottom` 280 < 412) ;
+- le portrait 412×915 est **inchangé** (colonne unique, 472 px).
+
+`VERSION` unique dans `data.js` : **0.1.1** (enregistrement `sw.js?v=0.1.1`, `updateViaCache: 'none'`). Test de régression `menu.buttonsVisible` dans `tests/t01.js`.
+
+Captures :
+
+- `/workspace/games3d/dossier-baass-3d-v011-menu-paysage.png` — 915×412
+- `/workspace/games3d/dossier-baass-3d-v011-menu.png` — 412×915
+
+Appels et triangles du **menu** : inchangés par rapport à la v0.1.0 (mesure Playwright, SwiftShader) — 412×915 : **31 / 23 298** ; 915×412 : **35 / 32 284**.
 
 ## Contrôles
 
@@ -137,7 +157,7 @@ Captures 412×915 (sauf paysage) :
 ## Tests
 
 - `tests/quotes.test.mjs` — les huit citations sur les pages indiquées, y compris Roswell 1947.
-- `tests/t01.js` — Playwright 412×915 et 915×412 : chargement, 0 erreur console, 0 HTTP 4xx, chaque zone, collecte via `__game`, événement TR-3B, écran de fin + rejouer, crédits (Kenney, Quaternius, hat_my_guy, Dylusion, CC0, CC BY-NC), appels < 100.
+- `tests/t01.js` — Playwright 412×915 et 915×412 : chargement, 0 erreur console, 0 HTTP 4xx, les trois boutons du menu visibles sans défilement (`menu.buttonsVisible`, aussi en paysage), chaque zone, collecte via `__game`, événement TR-3B, écran de fin + rejouer, crédits (Kenney, Quaternius, hat_my_guy, Dylusion, CC0, CC BY-NC), appels < 100. **PASS** en v0.1.1.
 
 ## Limites honnêtes (v0.1.0)
 

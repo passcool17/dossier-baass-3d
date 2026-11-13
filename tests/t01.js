@@ -61,6 +61,33 @@ async function runView(browser, w, h, shots) {
   ok(prefix + 'banner', await page.evaluate(() => document.getElementById('banner').textContent.includes('plan de recherche')));
   ok(prefix + 'menu', await page.evaluate(() => !document.getElementById('menu').classList.contains('hidden')));
 
+  const menuFit = await page.evaluate(() => {
+    const menu = document.getElementById('menu');
+    const vh = window.innerHeight, vw = window.innerWidth;
+    const mr = menu.getBoundingClientRect();
+    const buttons = ['bPlay', 'bHow', 'bCredits'].map((id) => {
+      const r = document.getElementById(id).getBoundingClientRect();
+      return {
+        id,
+        top: +r.top.toFixed(1),
+        bottom: +r.bottom.toFixed(1),
+        height: +r.height.toFixed(1),
+        visible: r.top >= -0.5 && r.bottom <= vh + 0.5 && r.width > 0 && r.height >= 44,
+      };
+    });
+    return {
+      vw, vh,
+      menuTop: +mr.top.toFixed(1),
+      menuBottom: +mr.bottom.toFixed(1),
+      menuH: +mr.height.toFixed(1),
+      scroll: menu.scrollHeight > menu.clientHeight + 1,
+      scrollTop: menu.scrollTop,
+      buttons,
+      allVisible: buttons.every((b) => b.visible),
+    };
+  });
+  ok(prefix + 'menu.buttonsVisible', menuFit.allVisible && !menuFit.scroll, menuFit);
+
   const mMenu = await measure(page, 1000);
   R[prefix + 'menu.perf'] = mMenu;
   ok(prefix + 'menu.calls', mMenu.calls < 100, mMenu);
