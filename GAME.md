@@ -1,8 +1,8 @@
 # Dossier BAASS · 3D — v0.2.2
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=COMMIT_SHORT (à mettre à jour après publication)
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=6b679e3
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `COMMIT_FULL` (à mettre à jour), 13 novembre 2026 (heure de Toronto). La v0.2.1 était `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), docs `c9a5897`. La v0.2.0 était `6c8de4e`.
+- Commit : `6b679e38cc9fa24e632c2d960eda596c35f1a5c1` (6b679e3), 13 novembre 2026 (heure de Toronto). La v0.2.1 était `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), docs `c9a5897`. La v0.2.0 était `6c8de4e`. Un second commit de documentation suit, avec ce lien et les mesures live.
 - État : v0.2.2 — correction du service worker : plus de mélange de versions à la mise à jour (mood.js périmé). Passage visuel de la v0.2.1 inchangé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
@@ -28,11 +28,28 @@ Correction du bug QA moyen de la v0.2.1 : après un passage v0.2.0 → v0.2.1, l
 
 Résultat local : le menu s’affiche, `__game.version === "0.2.2"`, 0 erreur console, 0 HTTP ≥ 400, cache **uniquement** `dossier-baass-3d-v0.2.2`, modules demandés en `mood.js?v=0.2.2` (idem props, data, main). Le 404 vu en QA sur la mise à jour cassée ne se reproduit pas.
 
-Le même parcours est aussi joué en ligne après publication (profil persistant : d’abord `?v=df0ef95`, puis la nouvelle URL).
+En ligne : une visite neuve de `?v=6b679e3` sert bien la v0.2.2 (`sw.js?v=0.2.2`, cache uniquement `dossier-baass-3d-v0.2.2`, modules en `?v=0.2.2`, menu affiché, 0 erreur, 0 HTTP ≥ 400). Le parcours de mise à jour en ligne (profil déjà sur `?v=df0ef95`) n’a pas pu être rejoué après la publication : GitHub Pages servait déjà la v0.2.2 quelques secondes après le push, donc on ne pouvait plus installer le SW 0.2.1 sur cette origine. Le parcours local (worktree `6c8de4e` → arbre 0.2.2, même origine) couvre le cas réel, y compris l’ancien SW cache-first.
 
 ### Tests et budget
 
-`quotes.test.mjs` **PASS**, `t01.js` 412×915 et 915×412 **PASS**. Mesures live (mêmes vues que la v0.2.1, appels inchangés attendus) après publication. 0 transmission.
+`quotes.test.mjs` **PASS**, `t01.js` 412×915 et 915×412 **PASS**, `tests/t-sw-upgrade.cjs` **PASS**.
+
+#### Mesures live (Chrome `--use-gl=angle --use-angle=gl`, llvmpipe, `?v=6b679e3&tier=3`)
+
+Identiques à la v0.2.1 sur toutes les vues de jeu. Menu paysage : 63 / 48 850 (v0.2.1 live 62 / 48 770 — écart d’orbite d’1 appel, déjà vu en QA). Toutes sous 100. 0 transmission. Version servie **0.2.2**. Cache **`dossier-baass-3d-v0.2.2` uniquement**.
+
+| Vue | 412×915 (appels / tris) | 915×412 (appels / tris) | v0.2.1 |
+|---|---|---|---|
+| Menu (orbite TR-3B) | 49 / 45 144 | 63 / 48 850 | 49 / 45 144 · 62 / 48 770 |
+| Ranch | 22 / 29 914 | 38 / 35 056 | identique |
+| Hangar | 16 / 14 740 | 23 / 18 688 | identique |
+| Entrée du bunker | 35 / 41 578 | 56 / 49 730 | identique |
+| Rampe | 43 / 40 258 | 48 / 42 084 | identique |
+| Laboratoire (goto lab) | 35 / 34 412 | 42 / 36 096 | identique |
+| Site de l’épave | 42 / 41 928 | **69 / 56 924** | identique |
+| TR-3B (vol stationnaire) | 36 / 34 376 | 59 / 47 386 | identique |
+| Classeurs (cadrage composé) | 28 / 26 032 | 31 / 29 364 | identique |
+| Serveurs (cadrage composé) | 36 / 34 612 | 42 / 36 096 | identique |
 
 Bandeau et citations : **inchangés**.
 
