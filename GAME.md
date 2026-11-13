@@ -1,8 +1,9 @@
 # Dossier BAASS · 3D — v0.1.0
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=35f28a3
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- État : v0.1.0 — première version jouable. Enquêteur fictif sur un site secret (ranch, hangar, laboratoire, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : `35f28a355664325296b5890f3629acf57128397d` (35f28a3), 12 novembre 2026, 22:25 (heure de Toronto)
+- État : v0.1.0 — première version jouable, en ligne sur GitHub Pages. Enquêteur fictif sur un site secret (ranch, hangar, laboratoire, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -98,18 +99,31 @@ Les GLB des kits sont traités avec `gltf-transform` (textures embarquées, ETC1
 
 Outil local des captures : Playwright (Chromium, SwiftShader) à 412×915, et 915×412 pour le paysage. **Les fps de la box ne sont pas les fps d’un Samsung S20 FE.** 0 erreur console, 0 HTTP 4xx, 0 transmission, tous les appels sous 100 (objectif 15–40 pour une vue typique).
 
-Mesure live prévue : `node /home/box/opt/perf3d/measure.mjs '<url>' --gl angle-gl` après déploiement Pages.
+Live vérifié le 12 novembre 2026, 22:29 (heure de Toronto) : `https://passcool17.github.io/dossier-baass-3d/?v=35f28a3` charge v0.1.0, TR-3B `loaded: true`, `placeholder: false`, taille 30,000 × 3,197 × 26,482 m. 0 erreur console, 0 HTTP 4xx.
+
+`/home/box/opt/perf3d/measure.mjs` est couplé à `__c204` (jeu Titor) : la mesure live ci-dessous utilise le même Chrome (`/usr/bin/google-chrome`) et les mêmes drapeaux `--use-gl=angle --use-angle=gl`, à 412×915, sur `__game`. Le rendu GL de la box est **ANGLE / Mesa llvmpipe** — **pas les fps d’un S20 FE**.
+
+| Vue | Appels | Triangles | fps box | Notes |
+|---|---:|---:|---:|---|
+| Menu (live, angle-gl) | 30 | 22 762 | ~50 | Caméra d’orbite au ranch |
+| Ranch, caméra de jeu (live) | 25 | 23 510 | ~60 | Départ troisième personne |
+| Hangar, caméra de jeu (live) | 17 | 8 458 | ~30 | Point `__game.goto('hangar')` |
+| Laboratoire, caméra de jeu (live) | 8 | 7 644 | ~38 | |
+| Épave, caméra de jeu (live) | 41 | 31 096 | ~60 | |
+| **Survol TR-3B, vol stationnaire (live)** | **38** | **22 726** | ~29 | Même cadrage que la capture (triangle + 3 lumières) |
+
+Captures cinématiques locales (Playwright, SwiftShader, 412×915 sauf paysage). Tous les appels < 100.
 
 | Vue | Appels | Triangles | Notes |
 |---|---:|---:|---|
-| Ranch (grange, vue 3/4) | 17 | 23 352 | Capture principale, 412×915 |
-| Hangar (château d’eau, 3/4) | 29 | 28 300 | 412×915 |
+| Ranch (grange, vue 3/4) | 17 | 23 352 | Capture principale |
+| Hangar (château d’eau, 3/4) | 29 | 28 300 | |
 | Hangar (vue d’ensemble) | 46 | 20 728 | Toits + ranch + épave |
 | Laboratoire (vue haute) | 25 | 23 218 | Couloirs Kenney Space |
 | Laboratoire (œil) | 23 | 26 638 | |
 | Site d’épave | 21 | 7 372 | Soucoupe, débris, papiers |
-| **Survol TR-3B (vol stationnaire)** | **38** | **22 726** | Triangle entier, 3 lumières underside, au-dessus du hangar |
-| Paysage 915×412 (site complet) | 87 | 59 972 | Sous 100 ; vue large qui englobe tout le site |
+| **Survol TR-3B (vol stationnaire)** | **38** | **22 726** | Identique à la mesure live |
+| Paysage 915×412 (site complet) | 87 | 59 972 | Vue large, toujours sous 100 |
 
 Captures 412×915 (sauf paysage) :
 
