@@ -1,8 +1,8 @@
 # Dossier BAASS · 3D — v0.2.5
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/ (le `?v=` du SHA sera ajouté après le push)
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : à venir (jeu v0.2.5). La v0.2.4 était `17725238122ab9fd602dae11ff169b3a4f1b0707` (1772523), docs `658c7d5`. La v0.2.3 était `a396e5e`, docs `417fd16`. Un second commit de documentation suit, avec le lien live et les mesures.
+- Commit : `22ce6042596c50a410ba89ae3ca9bfd424e82032` (22ce604), 13 novembre 2026 (heure de Toronto). La v0.2.4 était `17725238122ab9fd602dae11ff169b3a4f1b0707` (1772523), docs `658c7d5`. La v0.2.3 était `a396e5e`, docs `417fd16`.
 - État : v0.2.5 — le regard (glisser un doigt, souris, stick droit) tourne enfin dans le bon sens ; la rampe cadre la porte du laboratoire et le bandeau dit « Rampe ». Module partagé touch-controls **1.0.1**. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
@@ -47,9 +47,26 @@ Résultat local, **trois exécutions consécutives** : **134 / 134 PASS** chacun
 
 `quotes.test.mjs` **PASS** (2/2). `t01.js` 412×915 et 915×412 **PASS**. `t-sw-upgrade.cjs` **PASS** : 0.2.0 → 0.2.5, menu, `__game.version === "0.2.5"`, cache **uniquement** `dossier-baass-3d-v0.2.5` (81 fichiers), 0 erreur, 0 HTTP ≥ 400, bandeau inchangé.
 
-### Mesures live
+### Mesures live (Chrome `--use-gl=angle --use-angle=gl`, llvmpipe, `?v=22ce604&tier=3`)
 
-À venir dans le commit de documentation. Attendues identiques aux vues de jeu de la v0.2.4 (épave paysage **69 / 56 924**).
+Même enchaînement de `goto` que pour la v0.2.4. Ranch, hangar, entrée, épave, classeurs et serveurs **identiques**. La **rampe** change volontairement (nouvelle caméra, moins de géométrie dans le cadre) : 28 / 34 060 et 25 / 29 536, toujours sous 100. Laboratoire et TR-3B diffèrent parce que, dans ce script, ils héritent du pitch 0,68 de la rampe (en v0.2.4 ils héritaient de 0,22) — ce n’est pas un changement de maillage. Menu : écart d’orbite. 0 transmission. 0 erreur console, 0 HTTP ≥ 400. Version **0.2.5**. SW `sw.js?v=0.2.5`, cache **`dossier-baass-3d-v0.2.5` uniquement**. Bandeau inchangé.
+
+Ces chiffres sont ceux de la box (llvmpipe), **pas** ceux du S20 FE. Vue la plus chargée : épave paysage, **69 / 56 924**, inchangée.
+
+| Vue | 412×915 (appels / tris) | 915×412 (appels / tris) | v0.2.4 |
+|---|---|---|---|
+| Menu (orbite TR-3B) | 48 / 45 304 | 59 / 48 598 | 49 / 45 144 · 63 / 48 850 (orbite) |
+| Ranch | 22 / 29 914 | 38 / 35 056 | identique |
+| Hangar | 16 / 14 740 | 23 / 18 688 | identique |
+| Entrée du bunker | 35 / 41 578 | 56 / 49 730 | identique |
+| Rampe | 28 / 34 060 | 25 / 29 536 | 43 / 40 258 · 48 / 42 084 (nouveau cadrage) |
+| Laboratoire (goto lab) | 28 / 32 168 | 30 / 33 520 | 35 / 34 412 · 42 / 36 096 (pitch hérité) |
+| Site de l’épave | 42 / 41 928 | **69 / 56 924** | identique |
+| TR-3B (vol stationnaire) | 27 / 29 902 | 33 / 39 672 | 36 / 34 376 · 59 / 47 386 (pitch hérité) |
+| Classeurs (cadrage composé) | 28 / 26 032 | 31 / 29 364 | identique |
+| Serveurs (cadrage composé) | 36 / 34 612 | 42 / 36 096 | identique |
+
+`t-joystick.cjs` sur le lien live `?v=22ce604` : **trois exécutions consécutives, 134 / 134 PASS** chacune (dont regard CDP : glisser à droite, NDC x = −1,60 en portrait et −0,37 en paysage ; yaw π → 2,48).
 
 Bandeau et citations : **inchangés**.
 
