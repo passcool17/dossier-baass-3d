@@ -1,8 +1,8 @@
 # Dossier BAASS · 3D — v0.1.1
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=35f28a3
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=e22f0b1
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `35f28a355664325296b5890f3629acf57128397d` (35f28a3), 12 novembre 2026, 22:25 (heure de Toronto)
+- Commit : `e22f0b18ab4a1b778e4503ff312542498bea3cb7` (e22f0b1), 12 novembre 2026, 22:45 (heure de Toronto). La v0.1.0 était `35f28a3` / docs `c443d5e`.
 - État : v0.1.1 — menu paysage compact (correction QA). Première version jouable en ligne depuis la v0.1.0. Enquêteur fictif sur un site secret (ranch, hangar, laboratoire, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
@@ -27,7 +27,7 @@ Captures :
 - `/workspace/games3d/dossier-baass-3d-v011-menu-paysage.png` — 915×412
 - `/workspace/games3d/dossier-baass-3d-v011-menu.png` — 412×915
 
-Appels et triangles du **menu** : inchangés par rapport à la v0.1.0 (mesure Playwright, SwiftShader) — 412×915 : **31 / 23 298** ; 915×412 : **35 / 32 284**.
+Appels et triangles du **menu** : inchangés par rapport à la v0.1.0 (mesure Playwright, SwiftShader) — 412×915 : **31 / 23 298** ; 915×412 : **35 / 32 284**. Live (`?v=e22f0b1`, Chrome angle-gl, llvmpipe) : 412×915 **29 / 22 454** (v0.1.0 live était 30 / 22 762 — écart d’orbite de la caméra, 1 appel) ; 915×412 **35 / 32 284**. 0 erreur console, 0 HTTP 4xx. Version servie : 0.1.1.
 
 ## Contrôles
 
