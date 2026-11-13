@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16130f">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Dossier BAASS : jeu 3D. Tu explores un site de recherche fictif et tu recueilles des extraits réels du plan BAASS de décembre 2008. Plan de recherche, pas une preuve ; histoire fictive.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Dossier BAASS · 3D</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="stylesheet" href="./style.css?v=0.1.0">
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+
+<div id="banner" role="note">plan de recherche, pas une preuve ; histoire fictive</div>
+
+<div id="loading" role="status">
+  <p class="load-kicker">Dossier BAASS</p>
+  <h1>Site de recherche</h1>
+  <p class="load-sub">Chargement du ranch, du hangar et du laboratoire…</p>
+  <div class="load-bar" aria-hidden="true"><i id="loadBar"></i></div>
+</div>
+
+<header id="top">
+  <div class="ttl">
+    <b id="ttlMain">Dossier BAASS</b>
+    <span id="ttlSub">Enquêteur · site secret</span>
+  </div>
+  <div id="topBtns">
+    <div id="hudStats" class="hidden" aria-live="polite">
+      <span id="hudEvidence" title="Preuves">0 / 8</span>
+      <span id="hudTime" title="Temps">0:00</span>
+      <span id="hudZone" title="Zone">Ranch</span>
+    </div>
+    <button type="button" id="bMute" class="ico" aria-label="Couper le son" aria-pressed="false">🔊</button>
+    <button type="button" id="bFull" class="ico" aria-label="Plein écran">⛶</button>
+  </div>
+</header>
+
+<section id="menu" class="panel hidden" aria-labelledby="menuTitle">
+  <p class="kicker">Jeu 3D · enquête</p>
+  <h1 id="menuTitle">Dossier BAASS</h1>
+  <p class="lead">Tu es un enquêteur fictif. Tu explores un site de recherche secret — ranch, hangar, laboratoire — et tu recueilles des preuves. Chaque preuve est un extrait réel du plan BAASS (2 décembre 2008).</p>
+  <p class="disclaimer">Ceci est un plan de gestion de recherche, pas une preuve de physique nouvelle ni d’engin extraterrestre. L’histoire du jeu est une fiction.</p>
+  <div class="actions">
+    <button type="button" id="bPlay" class="primary">Commencer l’enquête</button>
+    <button type="button" id="bHow">Commandes</button>
+    <button type="button" id="bCredits">Crédits</button>
+  </div>
+</section>
+
+<section id="how" class="panel scroll hidden" aria-labelledby="howTitle">
+  <button type="button" class="close" data-close="how" aria-label="Fermer">✕</button>
+  <h2 id="howTitle">Commandes</h2>
+  <ul class="howto">
+    <li><b>Téléphone :</b> joystick à gauche pour marcher, glisser à droite pour regarder, bouton pour examiner une preuve.</li>
+    <li><b>Clavier :</b> ZQSD ou flèches pour marcher, souris pour regarder (clic dans le jeu), E pour examiner.</li>
+    <li><b>Manette :</b> stick gauche pour marcher, stick droit pour regarder, bouton A pour examiner.</li>
+  </ul>
+  <p>Trouve les 8 preuves, assiste au survol du TR-3B, et visite le site de l’épave. Une partie dure environ 5 à 8 minutes.</p>
+  <button type="button" id="bHowGo" class="primary">Commencer l’enquête</button>
+</section>
+
+<section id="credits" class="panel scroll hidden" aria-labelledby="crdTitle">
+  <button type="button" class="close" data-close="credits" aria-label="Fermer">✕</button>
+  <h2 id="crdTitle">Crédits</h2>
+  <p class="disclaimer">Le plan BAASS est un document de gestion de recherche, pas une preuve. L’histoire du jeu est une fiction.</p>
+  <div id="crdList"></div>
+</section>
+
+<section id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+  <button type="button" class="close" data-close="sheet" aria-label="Fermer la preuve">✕</button>
+  <p id="shTag" class="tag">Extrait réel · page <span id="shPage"></span></p>
+  <h2 id="shTitle"></h2>
+  <blockquote id="shQuote"></blockquote>
+  <p id="shBody"></p>
+  <p id="shRef" class="ref"></p>
+  <button type="button" id="bSheetOk" class="primary">Continuer</button>
+</section>
+
+<div id="touch" class="hidden">
+  <div id="joyL" class="joy" aria-label="Joystick de déplacement"><i></i></div>
+  <button type="button" id="bAct" class="primary act hidden">Collecter</button>
+</div>
+
+<p id="hint" class="hidden" aria-live="polite"></p>
+
+<section id="result" class="panel hidden" aria-labelledby="resTitle" role="alertdialog" aria-modal="true">
+  <h2 id="resTitle">Enquête terminée</h2>
+  <p id="resBody"></p>
+  <p id="resScore" class="score-line"></p>
+  <p id="resBest" class="best-line"></p>
+  <div class="actions">
+    <button type="button" id="bReplay" class="primary">Rejouer</button>
+    <button type="button" id="bResMenu">Menu</button>
+  </div>
+</section>
+
+<nav id="bar" class="hidden">
+  <button type="button" id="bBarMenu">Menu</button>
+  <button type="button" id="bBarCredits">Crédits</button>
+</nav>
+
+<div id="fps" class="hidden" aria-hidden="true"></div>
+
+<script type="module" src="./main.js?v=0.1.0"></script>
+</body>
+</html>

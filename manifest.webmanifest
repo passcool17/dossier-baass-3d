@@ -1,0 +1,15 @@
+{
+  "name": "Dossier BAASS · 3D",
+  "short_name": "Dossier BAASS",
+  "lang": "fr",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#16130f",
+  "theme_color": "#16130f",
+  "description": "Jeu 3D : enquêteur fictif sur un site de recherche, preuves tirées du plan BAASS de décembre 2008.",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
