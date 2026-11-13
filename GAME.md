@@ -1,8 +1,8 @@
 # Dossier BAASS · 3D — v0.2.0
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=COMMIT_SHORT (à mettre à jour après publication)
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=6c8de4e
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `COMMIT_FULL` (à mettre à jour après publication), 13 novembre 2026 (heure de Toronto). La v0.1.1 était `e22f0b18ab4a1b778e4503ff312542498bea3cb7` (e22f0b1), docs `6cbddfe`.
+- Commit : `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), 13 novembre 2026, matin (heure de Toronto). La v0.1.1 était `e22f0b18ab4a1b778e4503ff312542498bea3cb7` (e22f0b1), docs `6cbddfe`.
 - État : v0.2.0 — laboratoire souterrain (bunker), accessoires Sketchfab CC BY 4.0, son, ambiance, detect-gpu comme c204-2026. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
@@ -66,24 +66,25 @@ Web Audio, déverrouillé au premier toucher. Le déverrouillage relance aussi l
 
 Comme c204-2026 : detect-gpu **5.0.70** auto-hébergé (`./vendor/detect-gpu.esm.js`, `./detect-gpu-benchmarks/`, `benchmarksURL` relatif). Secours silencieux, `Promise.race` 4 s, `?tier=` pour forcer. Palier ≤ 1 → `pixelRatio` 1 et effets coûteux coupés (cônes, fill, env). `?fps=1` affiche le palier et le nom de la puce.
 
-### Budget et mesures (box, Playwright, SwiftShader, `?tier=3`)
+### Budget et mesures live (Chrome `--use-gl=angle --use-angle=gl`, llvmpipe, `?v=6c8de4e&tier=3`)
 
-Toutes les vues mesurées restent sous **100 appels**. Chiffres locaux, pas ceux du S20 FE (non mesuré). Les mesures live (Chrome angle-gl) seront ajoutées après publication.
+Toutes les vues restent sous **100 appels**. Vue la plus chargée : site de l’épave en paysage, **66 appels / 59 092 triangles**. Ces chiffres sont ceux de la box (llvmpipe), **pas** ceux du S20 FE (non mesuré). Palier forcé à 3 pour le pire cas d’appels (qualité haute). 0 erreur console, 0 HTTP ≥ 400. Version servie : **0.2.0**. Service worker : `sw.js?v=0.2.0`, cache **`dossier-baass-3d-v0.2.0` uniquement** (68 entrées).
 
-| Vue | Taille | Appels | Triangles |
-|---|---|---:|---:|
-| Laboratoire, couloir | 412×915 | 35 | 33 558 |
-| Laboratoire, classeurs | 412×915 | 17 | 19 980 |
-| Laboratoire, serveurs | 412×915 | 14 | 16 276 |
-| Laboratoire, salle | 412×915 | 22 | 20 456 |
-| Laboratoire, plafond | 412×915 | 20 | 21 202 |
-| Entrée du bunker | 412×915 | 30 | 23 994 |
-| Rampe | 412×915 | 35 | 36 844 |
-| Site de l’épave (débris) | 412×915 | 20 | 11 316 |
-| TR-3B (lumières) | 412×915 | 28 | 22 532 |
-| TR-3B (test t01, vol) | 412×915 / 915×412 | 23 | 15 376 |
+Positions par défaut du hook `__game.goto` / `tr3bSnap('hover')` :
 
-0 `KHR_materials_transmission`. Service worker : cache `dossier-baass-3d-v0.2.0` uniquement (après une visite en v0.2.0). Précache : `mood.js`, `props.js`, 9 sons, 7 props Sketchfab, Basis, detect-gpu.
+| Vue | 412×915 (appels / tris) | 915×412 (appels / tris) |
+|---|---|---|
+| Menu | 28 / 29 194 | 35 / 33 012 |
+| Ranch | 17 / 23 362 | 33 / 28 504 |
+| Hangar | 15 / 8 440 | 22 / 13 088 |
+| Entrée du bunker | 25 / 15 192 | 33 / 22 318 |
+| Laboratoire (goto lab) | 12 / 7 464 | 18 / 19 486 |
+| Site de l’épave | 40 / 35 464 | **66 / 59 092** |
+| TR-3B (vol stationnaire, max sur 10 cadres) | 16 / 10 728 | 24 / 15 754 |
+
+Sur la box, des cadrages composés (caméra placée pour voir les pièces, Playwright SwiftShader, `?tier=3`) ont donné, en portrait 412×915 : laboratoire couloir 35 / 33 558, classeurs 17 / 19 980, serveurs 14 / 16 276, salle 22 / 20 456, plafond 20 / 21 202, entrée 30 / 23 994, rampe 35 / 36 844, épave (autre angle) 20 / 11 316, TR-3B lumières 28 / 22 532. Toujours sous 100.
+
+0 `KHR_materials_transmission`. Précache : `mood.js`, `props.js`, 9 sons, 7 props Sketchfab, Basis, detect-gpu.
 
 ### Tests
 
