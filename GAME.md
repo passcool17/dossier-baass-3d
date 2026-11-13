@@ -1,9 +1,9 @@
-# Dossier BAASS · 3D — v0.2.2
+# Dossier BAASS · 3D — v0.2.3
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=6b679e3
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/ (le `?v=` du SHA sera ajouté après le push)
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `6b679e38cc9fa24e632c2d960eda596c35f1a5c1` (6b679e3), 13 novembre 2026 (heure de Toronto). La v0.2.1 était `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), docs `c9a5897`. La v0.2.0 était `6c8de4e`. Un second commit de documentation suit, avec ce lien et les mesures live.
-- État : v0.2.2 — correction du service worker : plus de mélange de versions à la mise à jour (mood.js périmé). Passage visuel de la v0.2.1 inchangé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : à venir (jeu v0.2.3). La v0.2.2 était `6b679e38cc9fa24e632c2d960eda596c35f1a5c1` (6b679e3), docs `0ea8b8a`. La v0.2.1 était `df0ef95`, docs `c9a5897`. La v0.2.0 était `6c8de4e`. Un second commit de documentation suit, avec le lien live et les mesures.
+- État : v0.2.3 — correctif du pad de direction (et du regard) entièrement inversé, signalé par Pascal sur son S20. Rien de visuel n’a changé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -11,6 +11,55 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+
+## v0.2.3 — pad de direction et regard (13 nov. 2026)
+
+Pascal, sur son S20, à la v0.2.2 (`?v=6b679e3`) : « le pad de direction tout est inversé ». `VERSION` **0.2.3**. Rien de visuel n’a changé ; les appels et triangles doivent rester ceux de la v0.2.2 (identiques aux vues de jeu de la v0.2.1). Le correctif network-first du service worker (v0.2.2) est **inchangé**.
+
+### Cause
+
+Ce n’est pas le signe Y du joystick (un glissement vers le haut donne déjà `joy.ny < 0`, comme la touche W), ni particulièrement le `camYaw` posé par `goto` / `placeCameraSafe` en v0.2.1. La **transformée caméra-relative** `fx` / `fz` était entièrement niée depuis au moins la v0.2.0 :
+
+```
+fx =  input.x * cos(yaw) + input.z * sin(yaw)
+fz = -input.x * sin(yaw) + input.z * cos(yaw)
+```
+
+La caméra est en `(px − sin(yaw)·hd, pz − cos(yaw)·hd)` et regarde le joueur, donc sa direction de regard en XZ est `(sin(yaw), cos(yaw))`. Avec cette formule, W (ou stick vers le haut) rapprochait le joueur de la caméra, et D l’envoyait à gauche de l’écran. Le pad virtuel, WASD / flèches et le stick gauche de manette partagent le même `input.x` / `input.z` : les trois axes étaient donc inversés.
+
+Le regard était aussi inversé : `camYaw -= dx` faisait tourner la vue vers la gauche quand on glissait vers la droite (souris, verrouillage du pointeur, doigt, stick droit de manette).
+
+### Correctif
+
+```
+fx = -(input.x * cos(yaw) + input.z * sin(yaw))
+fz = -(-input.x * sin(yaw) + input.z * cos(yaw))
+```
+
+Stick / W vers le haut = s’éloigner de la caméra (avant à l’écran). Stick / S vers le bas = se rapprocher. Stick / D vers la droite = droite caméra à l’écran. Le mapping `joy.nx` / `joy.ny` n’a pas été touché (le corriger en plus aurait doublé le signe).
+
+Regard : `camYaw +=` (glisser à droite tourne la vue à droite) et `camPitch += movementY` (glisser vers le bas baisse le regard), pour la souris, le doigt et la manette.
+
+`index.html` : `?v=0.2.3` sur `style.css`, `main.js` et l’importmap (`data.js`, `mood.js`, `props.js`, detect-gpu). `sw.js` inchangé : VERSION toujours lue sur l’URL d’enregistrement `./sw.js?v=` + VERSION, HTML/CSS/JS toujours network-first.
+
+### Test du pad — `tests/t-joystick.cjs`
+
+À 412×915 et 915×412, pour chaque zone (ranch, hangar, entrée, rampe, laboratoire, épave) et après le passage menu orbite → **Commencer**, un glissement haut / droite / bas / gauche sur le joystick, puis les touches W / D / S / A. La position du joueur **après** le mouvement est projetée avec une **copie figée** de la caméra d’avant (la caméra de jeu suit le joueur, donc une projection « live » donnerait un delta nul). Sur la rampe, en descente, « s’éloigner de la caméra » peut apparaître vers le bas de l’écran : le test retombe alors sur le déplacement monde le long des vecteurs regard `(sin, cos)` et droite `(−cos, sin)`.
+
+Le regard est aussi vérifié : après un glissement de 80 px vers la droite, un point devant le joueur doit glisser vers la gauche de l’écran (NDC x diminue).
+
+Résultat : **124 / 124 PASS**, 0 erreur console, 0 HTTP ≥ 400, aux deux orientations, toutes les zones, le passage du menu, et `look.dragRight.turnsRight`.
+
+### Autres tests
+
+`quotes.test.mjs` **PASS** (2/2). `t01.js` 412×915 et 915×412 **PASS**, 0 erreur, 0 HTTP ≥ 400. `tests/t-sw-upgrade.cjs` **PASS** : worktree `6c8de4e` (v0.2.0) → arbre 0.2.3, menu affiché, `__game.version === "0.2.3"`, 0 erreur, 0 HTTP ≥ 400, cache **uniquement** `dossier-baass-3d-v0.2.3` (80 fichiers, `mood.js?v=0.2.3`).
+
+### Mesures live
+
+À venir dans le commit de documentation, après publication. Attendues identiques aux vues de jeu de la v0.2.2 (la plus chargée : épave paysage **69 / 56 924**).
+
+Bandeau et citations : **inchangés**.
 
 ## v0.2.2 — mise à jour du service worker sans mélange (13 nov. 2026)
 

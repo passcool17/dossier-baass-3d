@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.2.2 — Three.js r170. */
+/* Dossier BAASS 3D v0.2.3 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -270,7 +270,7 @@ function pollKeys() {
     x += lx; z += ly;
     const rx = Math.abs(p.axes[2]) > 0.12 ? p.axes[2] : 0;
     const ry = Math.abs(p.axes[3]) > 0.12 ? p.axes[3] : 0;
-    camYaw -= rx * 0.04;
+    camYaw += rx * 0.04;
     camPitch = Math.max(-0.9, Math.min(0.85, camPitch + ry * 0.03));
     if (p.buttons[0] && p.buttons[0].pressed && !input._padAct) { input._padAct = true; tryAction(); }
     if (p.buttons[0] && !p.buttons[0].pressed) input._padAct = false;
@@ -292,13 +292,13 @@ window.addEventListener('mouseup', () => { look.dragging = false; });
 window.addEventListener('mousemove', (e) => {
   if (!running || ended) return;
   if (document.pointerLockElement === canvas) {
-    camYaw -= e.movementX * look.sens;
-    camPitch = Math.max(-0.9, Math.min(0.85, camPitch - e.movementY * look.sens));
+    camYaw += e.movementX * look.sens;
+    camPitch = Math.max(-0.9, Math.min(0.85, camPitch + e.movementY * look.sens));
     return;
   }
   if (!look.dragging) return;
-  camYaw -= (e.clientX - look.lx) * look.sens;
-  camPitch = Math.max(-0.9, Math.min(0.85, camPitch - (e.clientY - look.ly) * look.sens));
+  camYaw += (e.clientX - look.lx) * look.sens;
+  camPitch = Math.max(-0.9, Math.min(0.85, camPitch + (e.clientY - look.ly) * look.sens));
   look.lx = e.clientX; look.ly = e.clientY;
 });
 
@@ -343,8 +343,8 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 window.addEventListener('pointermove', (e) => {
   if (e.pointerId !== lookTouch.id) return;
-  camYaw -= (e.clientX - look.lx) * 0.006;
-  camPitch = Math.max(-0.9, Math.min(0.85, camPitch - (e.clientY - look.ly) * 0.006));
+  camYaw += (e.clientX - look.lx) * 0.006;
+  camPitch = Math.max(-0.9, Math.min(0.85, camPitch + (e.clientY - look.ly) * 0.006));
   look.lx = e.clientX; look.ly = e.clientY;
 });
 window.addEventListener('pointerup', (e) => {
@@ -692,10 +692,16 @@ function updatePlayer(dt) {
   const moving = Math.hypot(input.x, input.z) > 0.08;
   player.moving = moving;
   if (moving && running && !ended) {
-    // movement relative to camera yaw (forward = -Z in camera space)
+    // Camera-relative movement. Camera sits at
+    //   (px - sin(yaw)*hd, pz - cos(yaw)*hd) and looks at the player, so its
+    // look direction is (sin(yaw), cos(yaw)) in XZ. Input: W / stick-up is
+    // input.z < 0 (joystick Y follows the screen: up is negative dy).
+    // Walk away from the camera (up on screen) and to camera-right (right
+    // on screen). Through v0.2.2 this transform was fully negated, so the
+    // virtual pad (and WASD / gamepad) moved opposite on both axes.
     const ca = Math.cos(camYaw), sa = Math.sin(camYaw);
-    const fx = input.x * ca + input.z * sa;
-    const fz = -input.x * sa + input.z * ca;
+    const fx = -(input.x * ca + input.z * sa);
+    const fz = -(-input.x * sa + input.z * ca);
     const spd = player.speed;
     let nx = player.pos.x + fx * spd * dt;
     let nz = player.pos.z + fz * spd * dt;
@@ -1507,6 +1513,63 @@ function exposeHook() {
     get time() { return elapsed; },
     get score() { return computeScore(elapsed); },
     get player() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw }; },
+    get camYaw() { return camYaw; },
+    get camPitch() { return camPitch; },
+    projectPlayer() {
+      const v = new THREE.Vector3(player.pos.x, player.pos.y + 1.0, player.pos.z);
+      v.project(camera);
+      return { x: v.x, y: v.y };
+    },
+    projectWorld(x, y, z) {
+      const v = new THREE.Vector3(x, y, z);
+      v.project(camera);
+      return { x: v.x, y: v.y };
+    },
+    cameraPose() {
+      return {
+        x: camera.position.x, y: camera.position.y, z: camera.position.z,
+        tx: player.pos.x,
+        ty: player.pos.y + 1.4,
+        tz: player.pos.z,
+      };
+    },
+    /** Third-person pose from camYaw / camPitch, ignoring wall collision
+     *  (clipped cameras sit on the player and make NDC undefined). */
+    idealCameraPose() {
+      const indoor = (typeof isIndoors === 'function') && isIndoors(player.pos.x, player.pos.z, player.pos.y);
+      const dist = indoor ? 3.05 : 5.2;
+      const height = indoor ? 1.55 : 2.15;
+      const offY = Math.sin(camPitch) * dist + height;
+      const hd = Math.cos(camPitch) * dist;
+      return {
+        x: player.pos.x - Math.sin(camYaw) * hd,
+        y: player.pos.y + offY,
+        z: player.pos.z - Math.cos(camYaw) * hd,
+        tx: player.pos.x,
+        ty: player.pos.y + (indoor ? 1.25 : 1.4),
+        tz: player.pos.z,
+      };
+    },
+    setCamYaw(y, p) {
+      camYaw = y;
+      if (p != null) camPitch = p;
+    },
+    setPlayer(x, z) {
+      const y = groundY(x, z);
+      player.pos.set(x, y, z);
+      if (player.object) player.object.position.set(x, y, z);
+      return { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+    },
+    /** Project a world point with a frozen camera pose (no wait for the render loop). */
+    projectWithPose(px, py, pz, cam) {
+      const tmp = camera.clone();
+      tmp.position.set(cam.x, cam.y, cam.z);
+      tmp.lookAt(cam.tx, cam.ty, cam.tz);
+      tmp.updateMatrixWorld(true);
+      const v = new THREE.Vector3(px, py, pz);
+      v.project(tmp);
+      return { x: v.x, y: v.y, visible: Math.abs(v.x) < 2 && Math.abs(v.y) < 2 && v.z > -1 && v.z < 1 };
+    },
     get evidence() { return EVIDENCE.map((e) => e.id); },
     startGame, goMenu, replay, resetRun,
     collect(id) { return collectEvidence(id, { silent: false }); },

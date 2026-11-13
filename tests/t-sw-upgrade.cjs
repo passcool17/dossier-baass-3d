@@ -1,8 +1,8 @@
 /**
  * Upgrade path: serve v0.2.0 (worktree 6c8de4e) until its SW is installed,
- * then switch the same origin to the current tree (v0.2.2) and reload.
- * Expect: menu boots, __game.version === '0.2.2', 0 console errors,
- * 0 HTTP >= 400 (game origin), cache only dossier-baass-3d-v0.2.2.
+ * then switch the same origin to the current tree (VERSION from data.js) and reload.
+ * Expect: menu boots, __game.version matches data.js VERSION, 0 console errors,
+ * 0 HTTP >= 400 (game origin), cache only dossier-baass-3d-v<VERSION>.
  *
  * Usage: node tests/t-sw-upgrade.cjs
  * Optional: UPGRADE_FROM=/tmp/baass-v020 UPGRADE_TO=... PORT=8898
@@ -98,7 +98,7 @@ async function waitServer() {
   errors.length = 0;
   http.length = 0;
 
-  // --- phase 2: switch origin to v0.2.2 and reload ---
+  // --- phase 2: switch origin to current VERSION and reload ---
   try { process.kill(-srv.pid, 'SIGTERM'); } catch {}
   await sleep(300);
   srv = startServer(TO);
@@ -108,26 +108,25 @@ async function waitServer() {
   console.log('SERVED_AFTER_SWITCH', servedVer);
   if (servedVer !== toVer) throw new Error('server still ' + servedVer);
 
-  await page.goto(ORIGIN + '/?t=sw022&v=upgrade', { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => window.__game && window.__game.ready && window.__game.version === '0.2.2', null, { timeout: 120000 });
-  // Wait until the new SW is controlling, then until only its cache remains.
-  await page.waitForFunction(() => {
+  await page.goto(ORIGIN + '/?t=sw-up&v=upgrade', { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.waitForFunction((v) => window.__game && window.__game.ready && window.__game.version === v, toVer, { timeout: 120000 });
+  const cacheName = 'dossier-baass-3d-v' + toVer;
+  await page.waitForFunction((v) => {
     const c = navigator.serviceWorker && navigator.serviceWorker.controller;
-    return !!(c && /sw\.js\?v=0\.2\.2/.test(c.scriptURL));
-  }, null, { timeout: 40000 });
-  await page.waitForFunction(() => caches.keys().then((keys) => keys.length === 1 && keys[0] === 'dossier-baass-3d-v0.2.2'), null, { timeout: 40000 });
+    return !!(c && c.scriptURL.indexOf('sw.js?v=' + v) !== -1);
+  }, toVer, { timeout: 40000 });
+  await page.waitForFunction((name) => caches.keys().then((keys) => keys.length === 1 && keys[0] === name), cacheName, { timeout: 40000 });
   await sleep(1200);
-  // Re-check after the activate delayed drop (800ms) and any in-flight puts.
-  await page.waitForFunction(() => caches.keys().then((keys) => keys.length === 1 && keys[0] === 'dossier-baass-3d-v0.2.2'), null, { timeout: 15000 });
+  await page.waitForFunction((name) => caches.keys().then((keys) => keys.length === 1 && keys[0] === name), cacheName, { timeout: 15000 });
 
-  const after = await page.evaluate(async () => {
+  const after = await page.evaluate(async (name) => {
     const keys = await caches.keys();
     const entries = {};
     for (const k of keys) {
       const c = await caches.open(k);
       entries[k] = (await c.keys()).map((r) => r.url);
     }
-    const urls = entries['dossier-baass-3d-v0.2.2'] || [];
+    const urls = entries[name] || [];
     const menu = document.getElementById('menu');
     const loading = document.getElementById('loading');
     const banner = document.getElementById('banner');
@@ -140,25 +139,25 @@ async function waitServer() {
       propsUrls: urls.filter((u) => /props\.js/.test(u)),
       dataUrls: urls.filter((u) => /data\.js/.test(u)),
       mainUrls: urls.filter((u) => /main\.js/.test(u)),
-      hasOldCache: keys.some((k) => k !== 'dossier-baass-3d-v0.2.2'),
-      hasOldJs: urls.some((u) => /[?&]v=0\.2\.[01]/.test(u) && /\.(js|css)$/.test(u)),
+      hasOldCache: keys.some((k) => k !== name),
+      hasOldJs: urls.some((u) => /[?&]v=0\.2\.[012]/.test(u) && /\.(js|css)$/.test(u) && u.indexOf('v=' + __game.version) === -1),
       menuHidden: menu ? menu.classList.contains('hidden') : null,
       loadingHidden: loading ? loading.classList.contains('hidden') : null,
       banner: banner ? banner.textContent : null,
     };
-  });
+  }, cacheName);
   console.log('AFTER', JSON.stringify(after, null, 2));
   console.log('ERRORS', JSON.stringify(errors));
   console.log('HTTP', JSON.stringify(http));
 
   const fail = [];
-  if (after.version !== '0.2.2') fail.push('version=' + after.version);
+  if (after.version !== toVer) fail.push('version=' + after.version);
   if (!after.ready) fail.push('not ready');
   if (after.menuHidden !== false) fail.push('menu not shown');
   if (after.loadingHidden !== true) fail.push('loading still visible');
   if (after.hasOldCache) fail.push('old cache remains ' + after.keys);
-  if (after.keys.length !== 1 || after.keys[0] !== 'dossier-baass-3d-v0.2.2') fail.push('caches ' + after.keys);
-  if (!after.moodUrls.some((u) => u.includes('mood.js?v=0.2.2'))) fail.push('mood not versioned ' + after.moodUrls);
+  if (after.keys.length !== 1 || after.keys[0] !== cacheName) fail.push('caches ' + after.keys);
+  if (!after.moodUrls.some((u) => u.includes('mood.js?v=' + toVer))) fail.push('mood not versioned ' + after.moodUrls);
   if (errors.length) fail.push('errors ' + JSON.stringify(errors));
   const httpGame = http.filter((u) => u.includes(ORIGIN));
   if (httpGame.length) fail.push('http>=400 ' + JSON.stringify(httpGame));
