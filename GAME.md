@@ -1,8 +1,8 @@
 # Dossier BAASS · 3D — v0.2.1
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=COMMIT_SHORT (à mettre à jour après publication)
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=df0ef95
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `COMMIT_FULL` (à mettre à jour), 13 novembre 2026 (heure de Toronto). La v0.2.0 était `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), docs `ccc0538`. La v0.1.1 était `e22f0b1`.
+- Commit : `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), 13 novembre 2026 (heure de Toronto). La v0.2.0 était `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), docs `ccc0538`. La v0.1.1 était `e22f0b1`. Un second commit de documentation suit, avec ce lien et les mesures live.
 - État : v0.2.1 — passage visuel : textures PBR CC0 (bunker et désert), ciel de crépuscule, menu cinématique autour du TR-3B, collision de caméra, effet de collecte plus long. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
@@ -49,21 +49,28 @@ Durée de l’effet portée à **1,2 s** (orbe + particules), avec filet de séc
 
 ### Budget (box, Playwright SwiftShader, `?tier=3`)
 
-Toutes les vues mesurées restent sous **100 appels**. 0 `KHR_materials_transmission`. 0 erreur console, 0 HTTP ≥ 400 sur les tests locaux. Mesures live (Chrome angle-gl) après publication.
+Toutes les vues mesurées restent sous **100 appels**. 0 `KHR_materials_transmission`. 0 erreur console, 0 HTTP ≥ 400 (tests locaux et live).
 
-| Vue | Appels / tris (412×915, cadrages composés) |
-|---|---|
-| Menu | 45 / 45 278 |
-| Menu paysage (915×412) | 59 / 52 546 |
-| Entrée bunker | 28–50 / 27 888–45 102 selon le cadrage |
-| Rampe | 42 / 40 186 |
-| Laboratoire couloir | 31 / 31 360 |
-| Classeurs | 56 / 54 828 |
-| Serveurs | 19 / 20 268 |
-| Plafond | 23 / 24 978 |
-| Épave | 21 / 17 778 |
-| TR-3B | 24 / 24 004 |
-| HUD paysage | 41 / 33 216 |
+#### Mesures live (Chrome `--use-gl=angle --use-angle=gl`, llvmpipe, `?v=df0ef95&tier=3`)
+
+Version servie : **0.2.1**. Service worker : `sw.js?v=0.2.1`, cache **`dossier-baass-3d-v0.2.1` uniquement**. Palier forcé à 3 (pire cas d’appels). Ces chiffres sont ceux de la box (llvmpipe), **pas** ceux du S20 FE (non mesuré). Vue la plus chargée : site de l’épave en paysage, **69 appels / 56 924 triangles**.
+
+Positions par défaut du hook `__game.goto` / `tr3bSnap('hover')` / menu cinématique :
+
+| Vue | 412×915 (appels / tris) | 915×412 (appels / tris) |
+|---|---|---|
+| Menu (orbite TR-3B) | 49 / 45 144 | 62 / 48 770 |
+| Ranch | 22 / 29 914 | 38 / 35 056 |
+| Hangar | 16 / 14 740 | 23 / 18 688 |
+| Entrée du bunker | 35 / 41 578 | 56 / 49 730 |
+| Rampe | 43 / 40 258 | 48 / 42 084 |
+| Laboratoire (goto lab) | 35 / 34 412 | 42 / 36 096 |
+| Site de l’épave | 42 / 41 928 | **69 / 56 924** |
+| TR-3B (vol stationnaire) | 36 / 34 376 | 59 / 47 386 |
+| Classeurs (cadrage composé) | 28 / 26 032 | 31 / 29 364 |
+| Serveurs (cadrage composé) | 36 / 34 612 | 42 / 36 096 |
+
+Sur la box, des cadrages composés (Playwright SwiftShader, `?tier=3`, 412×915) avaient donné : menu 45 / 45 278, menu paysage 59 / 52 546, entrée 27–35 selon l’angle, rampe 33–43, laboratoire couloir 31 / 31 360, classeurs 56 / 54 828, serveurs 19 / 20 268, plafond 23 / 24 978, épave 21 / 17 778, TR-3B 24 / 24 004, HUD paysage 41 / 33 216. Toujours sous 100.
 
 Tests : `quotes.test.mjs` **PASS**, `t01.js` 412×915 et 915×412 **PASS** (bunker, audio, palier, collecte 1,2 s, crédits, 0 erreur). Service worker : cache `dossier-baass-3d-v0.2.1`.
 
