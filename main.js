@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.2.3 — Three.js r170. */
+/* Dossier BAASS 3D v0.2.4 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -6,6 +6,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { getGPUTier } from './vendor/detect-gpu.esm.js';
+import { createMoveInput, cameraRelative } from './vendor/touch-controls/touch-controls.js';
 import {
   VERSION, SAVE_KEY, SETTINGS_KEY, BANNER, DISCLAIMER,
   EVIDENCE, ZONES, CREDITS, ASSETS_USED, SOUND_CREDITS,
@@ -73,9 +74,7 @@ let camPitch = 0.28;
 let camDist = 5.2;
 const look = { dragging: false, lx: 0, ly: 0, sens: 0.005 };
 
-const input = { x: 0, z: 0, act: false, keys: Object.create(null) };
-const joy = { active: false, id: -1, x: 0, y: 0, nx: 0, ny: 0 };
-const lookTouch = { id: -1 };
+const input = { x: 0, y: 0, act: false };
 
 const solids = []; // {minx,maxx,minz,maxz}
 const labWalls = [];
@@ -235,9 +234,8 @@ function toggleMute() {
   saveSettings();
 }
 
-/* ---------- Input ---------- */
+/* ---------- Input (shared touch-controls module) ---------- */
 window.addEventListener('keydown', (e) => {
-  input.keys[e.code] = true;
   if (e.code === 'KeyM') {
     e.preventDefault();
     toggleMute();
@@ -252,22 +250,11 @@ window.addEventListener('keydown', (e) => {
     else if (running && !ended) goMenu();
   }
 });
-window.addEventListener('keyup', (e) => { input.keys[e.code] = false; });
 
-function pollKeys() {
-  let x = 0, z = 0;
-  if (input.keys.KeyW || input.keys.KeyZ || input.keys.ArrowUp) z -= 1;
-  if (input.keys.KeyS || input.keys.ArrowDown) z += 1;
-  if (input.keys.KeyA || input.keys.KeyQ || input.keys.ArrowLeft) x -= 1;
-  if (input.keys.KeyD || input.keys.ArrowRight) x += 1;
-  if (joy.active) { x += joy.nx; z += joy.ny; }
-  // gamepad
+function pollGamepadLook() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const p of pads) {
     if (!p) continue;
-    const lx = Math.abs(p.axes[0]) > 0.18 ? p.axes[0] : 0;
-    const ly = Math.abs(p.axes[1]) > 0.18 ? p.axes[1] : 0;
-    x += lx; z += ly;
     const rx = Math.abs(p.axes[2]) > 0.12 ? p.axes[2] : 0;
     const ry = Math.abs(p.axes[3]) > 0.12 ? p.axes[3] : 0;
     camYaw += rx * 0.04;
@@ -275,9 +262,24 @@ function pollKeys() {
     if (p.buttons[0] && p.buttons[0].pressed && !input._padAct) { input._padAct = true; tryAction(); }
     if (p.buttons[0] && !p.buttons[0].pressed) input._padAct = false;
   }
-  const len = Math.hypot(x, z);
-  if (len > 1) { x /= len; z /= len; }
-  input.x = x; input.z = z;
+}
+
+let moveInput = null;
+function ensureMoveInput() {
+  if (moveInput) return moveInput;
+  const joyEl = $('joyL');
+  moveInput = createMoveInput({
+    element: joyEl,
+    keyboard: true,
+    azerty: true,
+    gamepad: true,
+    lookElement: canvas,
+    lookFilter: (e) => isTouch && running && !ended
+      && e.pointerType !== 'mouse'
+      && e.clientX >= window.innerWidth * 0.42,
+    onStart: () => { unlockAudio(); },
+  });
+  return moveInput;
 }
 
 /* mouse look when pointer locked or dragging on canvas */
@@ -302,56 +304,11 @@ window.addEventListener('mousemove', (e) => {
   look.lx = e.clientX; look.ly = e.clientY;
 });
 
-/* touch joystick + look */
-const joyEl = $('joyL');
-const joyKnob = joyEl.querySelector('i');
-function joySet(clientX, clientY) {
-  const r = joyEl.getBoundingClientRect();
-  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-  let dx = clientX - cx, dy = clientY - cy;
-  const max = r.width * 0.42;
-  const len = Math.hypot(dx, dy);
-  if (len > max) { dx *= max / len; dy *= max / len; }
-  joy.nx = dx / max;
-  joy.ny = dy / max;
-  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-}
-function joyEnd() {
-  joy.active = false; joy.id = -1; joy.nx = 0; joy.ny = 0;
-  joyKnob.style.transform = '';
-}
-joyEl.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  joy.active = true; joy.id = e.pointerId;
-  joyEl.setPointerCapture(e.pointerId);
-  joySet(e.clientX, e.clientY);
-  unlockAudio();
-});
-joyEl.addEventListener('pointermove', (e) => {
-  if (!joy.active || e.pointerId !== joy.id) return;
-  joySet(e.clientX, e.clientY);
-});
-joyEl.addEventListener('pointerup', joyEnd);
-joyEl.addEventListener('pointercancel', joyEnd);
-
-canvas.addEventListener('pointerdown', (e) => {
-  if (!isTouch || !running || ended) return;
-  if (e.pointerId === joy.id) return;
-  if (e.clientX < window.innerWidth * 0.42) return;
-  lookTouch.id = e.pointerId;
-  look.lx = e.clientX; look.ly = e.clientY;
-});
-window.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== lookTouch.id) return;
-  camYaw += (e.clientX - look.lx) * 0.006;
-  camPitch = Math.max(-0.9, Math.min(0.85, camPitch + (e.clientY - look.ly) * 0.006));
-  look.lx = e.clientX; look.ly = e.clientY;
-});
-window.addEventListener('pointerup', (e) => {
-  if (e.pointerId === lookTouch.id) lookTouch.id = -1;
-});
-
+/* Touch pad + look-drag live in the shared module (ensureMoveInput).
+   Mouse / pointer-lock look stays here so desktop and the look test
+   keep the same path. */
 $('bAct').addEventListener('click', () => { unlockAudio(); tryAction(); });
+ensureMoveInput();
 
 
 /* ---------- Asset loading ---------- */
@@ -688,20 +645,22 @@ function zoneAt(x, z) {
 }
 
 function updatePlayer(dt) {
-  pollKeys();
-  const moving = Math.hypot(input.x, input.z) > 0.08;
+  const mv = ensureMoveInput().read();
+  input.x = mv.x;
+  input.y = mv.y;
+  const ld = moveInput.readLook();
+  if (running && !ended) {
+    camYaw += ld.dx * 0.006;
+    camPitch = Math.max(-0.9, Math.min(0.85, camPitch + ld.dy * 0.006));
+    pollGamepadLook();
+  }
+  const moving = Math.hypot(mv.x, mv.y) > 0.08;
   player.moving = moving;
   if (moving && running && !ended) {
-    // Camera-relative movement. Camera sits at
-    //   (px - sin(yaw)*hd, pz - cos(yaw)*hd) and looks at the player, so its
-    // look direction is (sin(yaw), cos(yaw)) in XZ. Input: W / stick-up is
-    // input.z < 0 (joystick Y follows the screen: up is negative dy).
-    // Walk away from the camera (up on screen) and to camera-right (right
-    // on screen). Through v0.2.2 this transform was fully negated, so the
-    // virtual pad (and WASD / gamepad) moved opposite on both axes.
-    const ca = Math.cos(camYaw), sa = Math.sin(camYaw);
-    const fx = -(input.x * ca + input.z * sa);
-    const fz = -(-input.x * sa + input.z * ca);
+    // Shared module: read().y = +1 is forward (away from the camera).
+    // cameraRelative uses the documented Three.js camera:
+    //   (px - sin(yaw)*hd, pz - cos(yaw)*hd), look (sin(yaw), cos(yaw)).
+    const { x: fx, z: fz } = cameraRelative(mv.x, mv.y, camYaw);
     const spd = player.speed;
     let nx = player.pos.x + fx * spd * dt;
     let nz = player.pos.z + fz * spd * dt;

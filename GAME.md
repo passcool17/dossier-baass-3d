@@ -1,9 +1,9 @@
-# Dossier BAASS · 3D — v0.2.3
+# Dossier BAASS · 3D — v0.2.4
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=a396e5e
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/ (le `?v=` du SHA sera ajouté après le push)
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `a396e5e62c566f1f7461635c9440b9ccdafc63c2` (a396e5e), 13 novembre 2026 (heure de Toronto). La v0.2.2 était `6b679e38cc9fa24e632c2d960eda596c35f1a5c1` (6b679e3), docs `0ea8b8a`. La v0.2.1 était `df0ef95`, docs `c9a5897`. La v0.2.0 était `6c8de4e`.
-- État : v0.2.3 — correctif du pad de direction (et du regard) entièrement inversé, signalé par Pascal sur son S20. Rien de visuel n’a changé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : à venir (jeu v0.2.4). La v0.2.3 était `a396e5e62c566f1f7461635c9440b9ccdafc63c2` (a396e5e), docs `417fd16`. La v0.2.2 était `6b679e3`, docs `0ea8b8a`. Un second commit de documentation suit, avec le lien live et les mesures.
+- État : v0.2.4 — le pad de direction vient du module partagé `/workspace/shared/touch-controls/` (copie dans `vendor/touch-controls/`). Mapping inchangé par rapport à la v0.2.3. Rien de visuel n’a changé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -12,6 +12,48 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+
+## v0.2.4 — module partagé de pad tactile (13 nov. 2026)
+
+Règle approuvée par Pascal le 13 novembre 2026 : **un seul** module de pad tactile pour tous les jeux, à `/workspace/shared/touch-controls/`. Les deux Arcade (3D et Phaser 2D) le réutilisent et le corrigent là, jamais une copie divergente. Chaque jeu le copie dans son dépôt au moment de publier. Ce jeu est le premier à l’adopter. `VERSION` **0.2.4**. Le mapping de la v0.2.3 (pad, WASD, manette, regard) est conservé ; l’apparence du pad est la même. Le service worker reste network-first (v0.2.2).
+
+### Module
+
+Source : `/workspace/shared/touch-controls/` (module ES **1.0.0**, sans dépendance Three.js).
+
+| Fichier | Rôle |
+|---|---|
+| `touch-controls.js` | `createMoveInput`, `cameraRelative`, `screenRelative2D`, `padAxesFromDelta` |
+| `touch-controls.css` | style par défaut du pad |
+| `tests/signs.test.mjs` | tests de signes (node) |
+| `demo.html` | petite page de démo |
+| `README.md` | API, signes, copie dans un dépôt, checklist (FR + EN) |
+
+Copie dans ce dépôt : `vendor/touch-controls/touch-controls.js` et `.css`. Importmap et précache : `./vendor/touch-controls/touch-controls.js?v=0.2.4`.
+
+`createMoveInput({ element, keyboard, azerty, gamepad, lookElement, lookFilter, onStart, deadzone })` → `{ read(), readLook(), reset(), destroy(), resize() }`.
+
+- `read()` : `{x, y}` dans [−1, 1], **`y = +1` = avant / haut** (le signe Y de l’écran, qui grandit vers le bas, est corrigé dans le module). Fusionne le pad, le clavier (WASD, flèches, ZQSD optionnel) et le stick gauche.
+- `cameraRelative(x, y, yaw)` → `{x, z}` monde Three.js. Caméra en `(px − sin(yaw)·hd, pz − cos(yaw)·hd)`, regard `(sin(yaw), cos(yaw))`. Haut = s’éloigner de la caméra, droite = droite caméra.
+- `screenRelative2D(x, y)` : haut = −Y (Phaser).
+- `readLook()` : `{dx, dy}`, glisser à droite = `dx` positif. Recalcul sur `resize` / `orientationchange`. Remise à zéro sur `visibilitychange` et `blur`. Multi-touch (un doigt pad, un doigt regard).
+
+Dans `main.js`, l’ancien code de mapping du joystick et du clavier est retiré. Le regard souris / verrouillage du pointeur et le stick droit de manette restent dans le jeu. Le visuel du pad (`#joyL`, styles dans `style.css`) est inchangé.
+
+### Tests
+
+- `/workspace/shared/touch-controls/tests/signs.test.mjs` **16 / 16 PASS**.
+- `tests/t-joystick.cjs` **124 / 124 PASS** (412×915 et 915×412, toutes les zones, passage du menu, `look.dragRight.turnsRight`, 0 erreur, 0 HTTP ≥ 400).
+- `quotes.test.mjs` **PASS** (2/2).
+- `t01.js` 412×915 et 915×412 **PASS**, 0 erreur, 0 HTTP ≥ 400.
+- `tests/t-sw-upgrade.cjs` **PASS** : worktree `6c8de4e` (v0.2.0) → 0.2.4, menu affiché, `__game.version === "0.2.4"`, 0 erreur, 0 HTTP ≥ 400, cache **uniquement** `dossier-baass-3d-v0.2.4` (81 fichiers, dont `touch-controls.js?v=0.2.4`).
+
+### Mesures live
+
+À venir dans le commit de documentation, après publication. Attendues identiques aux vues de jeu de la v0.2.3 (la plus chargée : épave paysage **69 / 56 924**).
+
+Bandeau et citations : **inchangés**.
 
 ## v0.2.3 — pad de direction et regard (13 nov. 2026)
 

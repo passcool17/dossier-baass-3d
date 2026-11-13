@@ -1,0 +1,35 @@
+/* Shared virtual pad. Games may override. Default matches Dossier BAASS · 3D. */
+.touch-pad,
+.joy {
+  position: absolute;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: #0005;
+  border: 2px solid #efe6d255;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.touch-pad > i,
+.joy > i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: #efe6d2cc;
+  pointer-events: none;
+}
+@media (orientation: landscape) {
+  .touch-pad,
+  .joy {
+    width: 96px;
+    height: 96px;
+  }
+}

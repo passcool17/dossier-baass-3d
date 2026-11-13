@@ -21,6 +21,7 @@ const PRECACHE = [
   './icon-512.png',
   './manifest.webmanifest',
   './vendor/detect-gpu.esm.js?v=' + VERSION,
+  './vendor/touch-controls/touch-controls.js?v=' + VERSION,
   './vendor/meshopt_decoder.module.js',
   './vendor/basis/basis_transcoder.js',
   './vendor/basis/basis_transcoder.wasm',
