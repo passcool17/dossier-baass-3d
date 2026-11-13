@@ -1,4 +1,4 @@
-/* mood.js — bunker, audio, atmosphere, pickup FX. Dossier BAASS 3D v0.2.1 */
+/* mood.js — bunker, audio, atmosphere, pickup FX. Dossier BAASS 3D v0.2.2 */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 

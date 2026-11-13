@@ -1,4 +1,4 @@
-// v0.2.1 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
+// v0.2.2 smoke: load, 0 console errors, 0 HTTP 4xx, zones, evidence via __game,
 // TR-3B, end screen, replay, credits, calls < 100. 412×915 and 915×412.
 const { chromium } = require('/workspace/tools3d/node_modules/playwright-core');
 const { pathToFileURL } = require('url');

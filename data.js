@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';

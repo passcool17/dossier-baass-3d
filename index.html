@@ -13,11 +13,15 @@
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<link rel="stylesheet" href="./style.css?v=0.2.1">
+<link rel="stylesheet" href="./style.css?v=0.2.2">
 <script type="importmap">
 {"imports":{
   "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./data.js": "./data.js?v=0.2.2",
+  "./mood.js": "./mood.js?v=0.2.2",
+  "./props.js": "./props.js?v=0.2.2",
+  "./vendor/detect-gpu.esm.js": "./vendor/detect-gpu.esm.js?v=0.2.2"
 }}
 </script>
 </head>
@@ -117,6 +121,6 @@
 
 <div id="fps" class="hidden" aria-hidden="true"></div>
 
-<script type="module" src="./main.js?v=0.2.1"></script>
+<script type="module" src="./main.js?v=0.2.2"></script>
 </body>
 </html>

@@ -1,15 +1,40 @@
-# Dossier BAASS · 3D — v0.2.1
+# Dossier BAASS · 3D — v0.2.2
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=df0ef95
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=COMMIT_SHORT (à mettre à jour après publication)
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), 13 novembre 2026 (heure de Toronto). La v0.2.0 était `6c8de4e6899644c081d8015b17596b8d4a605d78` (6c8de4e), docs `ccc0538`. La v0.1.1 était `e22f0b1`. Un second commit de documentation suit, avec ce lien et les mesures live.
-- État : v0.2.1 — passage visuel : textures PBR CC0 (bunker et désert), ciel de crépuscule, menu cinématique autour du TR-3B, collision de caméra, effet de collecte plus long. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit : `COMMIT_FULL` (à mettre à jour), 13 novembre 2026 (heure de Toronto). La v0.2.1 était `df0ef950f11e0c23dc77659dae15656f8a04caf3` (df0ef95), docs `c9a5897`. La v0.2.0 était `6c8de4e`.
+- État : v0.2.2 — correction du service worker : plus de mélange de versions à la mise à jour (mood.js périmé). Passage visuel de la v0.2.1 inchangé. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
 Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas une preuve de physique nouvelle ni d’engin extraterrestre. L’histoire et le site sont une fiction. Les citations, elles, sont des extraits mot pour mot, vérifiés page par page.
 
 
+
+
+## v0.2.2 — mise à jour du service worker sans mélange (13 nov. 2026)
+
+Correction du bug QA moyen de la v0.2.1 : après un passage v0.2.0 → v0.2.1, le service worker encore en place servait un `mood.js` périmé (sans `?v=`). L’écran restait sur le chargement, avec l’erreur `./mood.js has no export named addServerLeds` et un HTTP 404. `VERSION` **0.2.2**. Rien de visuel n’a changé ; les appels et triangles doivent rester ceux de la v0.2.1.
+
+### Correctif
+
+- **Importmap** dans `index.html` : tous les modules locaux (`./data.js`, `./mood.js`, `./props.js`, `./vendor/detect-gpu.esm.js`) sont résolus en `?v=0.2.2`. `main.js` et `style.css` aussi. C’est la source unique des URL versionnées ; la constante `VERSION` dans `data.js` doit rester égale à ce `?v=`.
+- **sw.js** : précache de ces mêmes URL versionnées. HTML, CSS et tout JavaScript sont **network-first** (`cache: 'no-store'`). `skipWaiting` + `clients.claim`. Les anciens caches sont effacés à l’activation, puis une seconde fois 800 ms plus tard, et à chaque `fetch`, pour qu’un `put` encore en cours de l’ancien worker ne fasse pas réapparaître `dossier-baass-3d-v0.2.0`.
+- Un ancien SW (v0.2.0 ou v0.2.1), qui reste cache-first sur les URL avec `?v=`, ne trouve pas `mood.js?v=0.2.2` dans son cache et va donc au réseau : plus de mélange `main.js` neuf + `mood.js` vieux.
+
+### Test de mise à jour
+
+`tests/t-sw-upgrade.cjs` : servir la v0.2.0 depuis un worktree `6c8de4e` (`/tmp/baass-v020`) jusqu’à ce que son SW installe le cache `dossier-baass-3d-v0.2.0` (68 fichiers, `mood.js` sans `?v=`), puis servir la v0.2.2 sur le même origine et recharger.
+
+Résultat local : le menu s’affiche, `__game.version === "0.2.2"`, 0 erreur console, 0 HTTP ≥ 400, cache **uniquement** `dossier-baass-3d-v0.2.2`, modules demandés en `mood.js?v=0.2.2` (idem props, data, main). Le 404 vu en QA sur la mise à jour cassée ne se reproduit pas.
+
+Le même parcours est aussi joué en ligne après publication (profil persistant : d’abord `?v=df0ef95`, puis la nouvelle URL).
+
+### Tests et budget
+
+`quotes.test.mjs` **PASS**, `t01.js` 412×915 et 915×412 **PASS**. Mesures live (mêmes vues que la v0.2.1, appels inchangés attendus) après publication. 0 transmission.
+
+Bandeau et citations : **inchangés**.
 
 ## v0.2.1 — passage visuel (13 nov. 2026)
 

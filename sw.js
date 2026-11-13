@@ -2,21 +2,25 @@
    A single VERSION, taken from the registration URL (?v=), is used for
    the cache name, the precache query strings, and the page's
    navigator.serviceWorker.register('./sw.js?v=' + VERSION).
-   HTML and data.js are network-first. skipWaiting + clients.claim.
-   Old caches are deleted on activate. */
+   HTML, CSS and all JS (including versioned ?v= URLs) are network-first,
+   with cache: 'no-store', so this worker never serves stale code.
+   Local modules are requested as ?v=VERSION (importmap in index.html),
+   so an older already-installed SW cannot mix a new main.js with a
+   cached unversioned mood.js.
+   skipWaiting + clients.claim. Old caches are deleted on activate. */
 const VERSION = new URL(self.location.href).searchParams.get('v') || '0';
 const VER = 'dossier-baass-3d-v' + VERSION;
 const PRECACHE = [
-'./',
+  './',
   './index.html',
   './style.css?v=' + VERSION,
   './main.js?v=' + VERSION,
-  './data.js',
+  './data.js?v=' + VERSION,
   './icon.svg',
   './icon-192.png',
   './icon-512.png',
   './manifest.webmanifest',
-  './vendor/detect-gpu.esm.js',
+  './vendor/detect-gpu.esm.js?v=' + VERSION,
   './vendor/meshopt_decoder.module.js',
   './vendor/basis/basis_transcoder.js',
   './vendor/basis/basis_transcoder.wasm',
@@ -57,8 +61,8 @@ const PRECACHE = [
   './assets/ufo-v1.glb',
   './assets/water-tower-v1.glb',
   './assets/tr3b-v1.glb',
-  './mood.js',
-  './props.js',
+  './mood.js?v=' + VERSION,
+  './props.js?v=' + VERSION,
   './assets/sfx/ui_click.ogg',
   './assets/sfx/ui_open.ogg',
   './assets/sfx/pickup.ogg',
@@ -97,55 +101,48 @@ self.addEventListener('install', (e) => {
   })());
 });
 
+async function dropOldCaches() {
+  const keys = await caches.keys();
+  await Promise.all(keys.filter((k) => k !== VER).map((k) => caches.delete(k)));
+}
+
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== VER).map((k) => caches.delete(k)));
-    self.clients.claim();
+    await self.clients.claim();
+    await dropOldCaches();
+    // A previous worker may still finish an in-flight put into its cache
+    // after we first delete it; drop again once those settle.
+    await new Promise((r) => setTimeout(r, 800));
+    await dropOldCaches();
   })());
 });
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  e.waitUntil(dropOldCaches());
   const url = new URL(req.url);
   const threeCdn = url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('three@0.170.0/');
   if (url.origin !== self.location.origin && !threeCdn) return;
 
   const isDoc = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
-  if (isDoc) {
+  const isCode = /\.(m?js|css)$/i.test(url.pathname);
+  if (isDoc || isCode) {
     e.respondWith((async () => {
       try {
-        const fresh = await fetch(req);
-        const c = await caches.open(VER);
-        c.put(req, fresh.clone());
-        return fresh;
-      } catch {
-        return (await caches.match(req)) || (await caches.match('./index.html'));
-      }
-    })());
-    return;
-  }
-
-  const path = url.pathname;
-  const known = /\/(assets|vendor|detect-gpu-benchmarks)\//.test(path)
-    || /[?&]v=/.test(url.search)
-    || threeCdn;
-  if (!known) {
-    e.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
+        const fresh = await fetch(req, { cache: 'no-store' });
         if (fresh && fresh.ok) {
           const c = await caches.open(VER);
           c.put(req, fresh.clone());
         }
         return fresh;
       } catch {
-        return caches.match(req);
+        return (await caches.match(req)) || (isDoc ? (await caches.match('./index.html')) : undefined);
       }
     })());
     return;
   }
+
   e.respondWith((async () => {
     const hit = await caches.match(req);
     if (hit) return hit;
