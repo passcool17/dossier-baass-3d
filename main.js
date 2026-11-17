@@ -1687,8 +1687,6 @@ function exposeHook() {
       } : null;
     },
     /** First meshes hit along the camera's view axis (debug: what fills the screen). */
-    camBlockersAt(x, y, z) { const bb = new THREE.Box3(); return camBlockers.filter((o) => bb.setFromObject(o).containsPoint(new THREE.Vector3(x, y, z))).map((o) => ({ n: o.name, p: o.parent && o.parent.name, m: o.material && o.material.name, min: bb.setFromObject(o).min.toArray().map((v) => +v.toFixed(2)), max: bb.max.toArray().map((v) => +v.toFixed(2)) })); },
-    camHit(a, b) { return camGrid ? segmentHit(camGrid, a[0], a[1], a[2], b[0], b[1], b[2]) : null; },
     debugRay(nx = 0, ny = 0) {
       const rc = new THREE.Raycaster();
       rc.setFromCamera(new THREE.Vector2(nx, ny), camera);
@@ -1932,6 +1930,25 @@ function exposeHook() {
   };
 }
 
+/** v0.3.1: the boot fade (#fade, z 80, opaque) must never hide the error.
+ *  Clear it, lift #loading above it, and show + focus Réessayer. */
+function showLoadError() {
+  if (Fade) Fade.toClear(0);
+  const ld = $('loading');
+  ld.classList.remove('hidden');
+  ld.classList.add('load-error');
+  const b = $('bRetry');
+  if (b) {
+    b.classList.remove('hidden');
+    b.onclick = () => {
+      b.disabled = true;
+      b.textContent = 'Chargement…';
+      location.reload();
+    };
+    try { b.focus({ preventScroll: true }); } catch {}
+  }
+}
+
 async function boot() {
   exposeHook();
   loadSettings();
@@ -1970,8 +1987,7 @@ async function boot() {
   } catch (err) {
     console.error('buildWorld:', err);
     $('loading').querySelector('.load-sub').textContent = 'Connexion perdue pendant le chargement. Vérifie ton réseau, puis réessaie.';
-    const b = $('bRetry');
-    if (b) { b.classList.remove('hidden'); b.onclick = () => location.reload(); }
+    showLoadError();
     return;
   }
   $('loading').classList.add('hidden');
@@ -2021,4 +2037,4 @@ document.querySelectorAll('[data-close]').forEach((b) => {
   });
 });
 
-boot();
+boot().catch((err) => { console.error('boot:', err); showLoadError(); });
