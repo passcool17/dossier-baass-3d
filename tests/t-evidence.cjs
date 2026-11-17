@@ -82,7 +82,7 @@ async function run(browser, size) {
     let wp = 1, lastP = null, lastMove = Date.now(), replans = 0, tapped = 0;
     const tItem = Date.now();
     let got = false;
-    while (Date.now() - tItem < 420000) {
+    while (Date.now() - tItem < 900000) { // wall-clock budget; box load can slow frames 3-4x
       const s = await page.evaluate(() => ({ p: __game.player, yaw: __game.camYaw, n: __game.collected.length, sheet: !document.getElementById('sheet').classList.contains('hidden'), act: !document.getElementById('bAct').classList.contains('hidden'), fx: __game.pickupFx, ended: !document.getElementById('result').classList.contains('hidden') }));
       if (s.n > before) {
         await padUp();
