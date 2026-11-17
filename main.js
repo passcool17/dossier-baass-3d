@@ -1724,6 +1724,66 @@ function loop() {
 }
 
 /* ---------- Hook & boot ---------- */
+/* ---------- v0.3.2: walkable-grid helpers (tests only, read-only) ---------- */
+function buildNav(step = 0.3) {
+  const x0 = -55, x1 = 62, z0 = -30, z1 = 72;
+  const nx = Math.floor((x1 - x0) / step) + 1, nz = Math.floor((z1 - z0) / step) + 1;
+  const free = (x, z) => { const c = collideXZ(x, z); return Math.abs(c.x - x) < 1e-6 && Math.abs(c.z - z) < 1e-6; };
+  const parent = new Int32Array(nx * nz).fill(-2);
+  const sx = Math.round((player.pos.x - x0) / step), sz = Math.round((player.pos.z - z0) / step);
+  const start = sx + sz * nx;
+  const q = [start]; parent[start] = -1;
+  const pts = [];
+  for (let h = 0; h < q.length; h++) {
+    const id = q[h], ix = id % nx, iz = (id - ix) / nx;
+    const x = x0 + ix * step, z = z0 + iz * step;
+    pts.push(x, z);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const jx = ix + dx, jz = iz + dz;
+      if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+      const j = jx + jz * nx;
+      if (parent[j] !== -2) continue;
+      const X = x0 + jx * step, Z = z0 + jz * step;
+      if (!free(X, Z) || !free((x + X) / 2, (z + Z) / 2)) continue;
+      parent[j] = id; q.push(j);
+    }
+  }
+  return { x0, z0, nx, nz, step, free, parent, pts, q };
+}
+function navPath(tx, tz, step = 0.3) {
+  const nav = buildNav(step);
+  const { x0, z0, nx, parent, free, q } = nav;
+  // Nearest reached cell to the target.
+  let best = -1, bd = Infinity;
+  for (const id of q) {
+    const ix = id % nx, iz = (id - ix) / nx;
+    const d = Math.hypot(x0 + ix * step - tx, z0 + iz * step - tz);
+    if (d < bd) { bd = d; best = id; }
+  }
+  const raw = [];
+  for (let id = best; id >= 0; id = parent[id]) { const ix = id % nx; raw.push([x0 + ix * step, z0 + ((id - ix) / nx) * step]); }
+  raw.reverse();
+  // String-pull: keep a waypoint only when the straight line is blocked,
+  // checked with a 0.25 m side clearance (the controller slides on walls).
+  const clear = (a, b) => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 0.15));
+    const ux = (b[0] - a[0]) / (L || 1), uz = (b[1] - a[1]) / (L || 1);
+    for (let i = 0; i <= n; i++) {
+      const x = a[0] + (b[0] - a[0]) * i / n, z = a[1] + (b[1] - a[1]) * i / n;
+      if (!free(x, z) || !free(x - uz * 0.25, z + ux * 0.25) || !free(x + uz * 0.25, z - ux * 0.25)) return false;
+    }
+    return true;
+  };
+  const out = [raw[0]];
+  let i = 0;
+  while (i < raw.length - 1) {
+    let j = raw.length - 1;
+    while (j > i + 1 && !clear(raw[i], raw[j])) j--;
+    out.push(raw[j]); i = j;
+  }
+  return { path: out.map(([x, z]) => [+x.toFixed(2), +z.toFixed(2)]), endDist: +bd.toFixed(2) };
+}
+
 function exposeHook() {
   window.__game = {
     get ready() { return ready; },
@@ -1835,27 +1895,7 @@ function exposeHook() {
      *  the game's own collideXZ, and report how close each evidence can be
      *  approached (horizontal) vs the pickup radius. Read-only. */
     reachability(step = 0.3) {
-      const x0 = -55, x1 = 62, z0 = -30, z1 = 72;
-      const nx = Math.floor((x1 - x0) / step) + 1, nz = Math.floor((z1 - z0) / step) + 1;
-      const free = (x, z) => { const c = collideXZ(x, z); return Math.abs(c.x - x) < 1e-6 && Math.abs(c.z - z) < 1e-6; };
-      const seen = new Uint8Array(nx * nz);
-      const sx = Math.round((player.pos.x - x0) / step), sz = Math.round((player.pos.z - z0) / step);
-      const q = [sx + sz * nx]; seen[q[0]] = 1;
-      const pts = [];
-      for (let h = 0; h < q.length; h++) {
-        const id = q[h], ix = id % nx, iz = (id - ix) / nx;
-        const x = x0 + ix * step, z = z0 + iz * step;
-        pts.push(x, z);
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const jx = ix + dx, jz = iz + dz;
-          if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
-          const j = jx + jz * nx;
-          if (seen[j]) continue;
-          const X = x0 + jx * step, Z = z0 + jz * step;
-          if (!free(X, Z) || !free((x + X) / 2, (z + Z) / 2)) continue;
-          seen[j] = 1; q.push(j);
-        }
-      }
+      const nav = buildNav(step), pts = nav.pts, free = nav.free;
       return EVIDENCE.map((ev) => {
         const n = evidenceNodes.get(ev.id);
         let best = Infinity, bx = 0, bz = 0;
@@ -1867,6 +1907,8 @@ function exposeHook() {
           itemFree: free(n.position.x, n.position.z), minDist: +best.toFixed(2), best: [bx, bz], radius: PICKUP_RADIUS, reachable: best < PICKUP_RADIUS - 0.1, visible: n.visible };
       }).concat([{ cells: pts.length / 2 }]);
     },
+    /** v0.3.2 test hook: walkable waypoints from the player to (tx, tz). */
+    navPath(tx, tz, step = 0.3) { return navPath(tx, tz, step); },
     collectSilent(id) { return collectEvidence(id, { silent: true }); },
     triggerTR3B,
     tr3bSnap(phase) {
