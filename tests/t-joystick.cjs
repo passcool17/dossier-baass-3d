@@ -1,5 +1,5 @@
 /**
- * Camera-relative movement and look for dossier-baass-3d v0.3.0.
+ * Camera-relative movement and look for dossier-baass-3d v0.3.1.
  *
  * v0.3.0: the pad is also driven with REAL CDP touch (Input.dispatchTouchEvent
  * on #joyL, kind 'touch') in every zone, both orientations. For touch the
@@ -539,6 +539,16 @@ async function runView(browser, w, h, results) {
     const r = await page.evaluate(() => ({ pc: __game.projectCharacter(), b: __game.characterBounds() }));
     const hgt = r.b ? r.b.max[1] - r.b.min[1] : 0;
     ok(results, prefix + 'character.visible.' + zone, r.pc.onScreen && r.b && r.b.visible && hgt > 1.4 && hgt < 2.2, { pc: r.pc, hgt });
+  }
+  // v0.3.1 (QA v0.3.0 bug 2): indoor poses where the detective must stay
+  // visible (not hidden by a camera pulled onto his head).
+  const INDOOR = { cabinets: [47.6, 6.2, Math.PI / 2], labroom: [50, 4, 0], roomSmall: [50, 13, Math.PI], servers: [56.4, 7.0, Math.PI / 2], lab: [36, 4, -Math.PI / 2] };
+  for (const [name, [x, z, yaw]] of Object.entries(INDOOR)) {
+    await page.evaluate(({ x, z, yaw }) => { __game.goto('lab'); __game.setPlayer(x, z); __game.setCamYaw(yaw, 0.3); __game.clearCamera(); }, { x, z, yaw });
+    await sleep(150);
+    await frames(page, 5);
+    const r = await page.evaluate(() => { const c = __game.cameraPos, p = __game.player; return { pc: __game.projectCharacter(), hidden: __game.character.hidden, d: Math.hypot(c.x - p.x, c.z - p.z) }; });
+    ok(results, prefix + 'character.indoor.' + name, !r.hidden && r.pc.onScreen && r.d > 1.5, r);
   }
 
   const errGame = errors.filter((e) => !/favicon/i.test(e));
