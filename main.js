@@ -833,7 +833,9 @@ function cameraRig() {
   const ahead = ramp ? 1.2 : 0;
   const tx = x + Math.sin(camYaw) * ahead;
   const tz = z + Math.cos(camYaw) * ahead;
-  const ty = ramp ? groundY(tx, tz) + lookH : y + lookH;
+  // Ramp: aim down the slope, but never below y + 0.45, so the hat stays in
+  // the portrait frame (camera is ~2.1 m above the feet, 1.75 m behind).
+  const ty = ramp ? Math.max(groundY(tx, tz) + lookH, y + 0.45) : y + lookH;
   return {
     x: x - Math.sin(camYaw) * hd,
     y: cy,
@@ -1215,8 +1217,8 @@ async function buildWorld(onProg) {
       });
     });
   }
-  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 30, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor', collide: false }));
-  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 38, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-corridor-2', collide: false }));
+  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 30, z: 4, y: labY, ry: 0, name: 'lab-corridor', collide: false })); // v0.3.0: ry 0 (π/2 put its walls across the passage)
+  tintLabKit(placeGLB(loaded['corridor-wide'], { x: 38, z: 4, y: labY, ry: 0, name: 'lab-corridor-2', collide: false }));
   tintLabKit(placeGLB(loaded['room-wide'], { x: 50, z: 4, y: labY, ry: 0, name: 'lab-room', collide: false }));
   tintLabKit(placeGLB(loaded['room-small'], { x: 50, z: 16, y: labY, ry: 0, name: 'lab-room-2', collide: false }));
   tintLabKit(placeGLB(loaded['corridor-wide-corner'], { x: 50, z: 10, y: labY, ry: 0, name: 'lab-corner', collide: false }));
@@ -1257,6 +1259,9 @@ async function buildWorld(onProg) {
   // corridor north/south walls, x 26-42, z around 0 and 8, opening none on sides
   wall(26, 42, 0 - W, 0 + W);
   wall(26, 42, 8 - W, 8 + W);
+  // v0.3.0: door fins of the corridor at x ≈ 40 (3 m opening, z 2.5–5.5).
+  wall(39.85, 40.55, 0, 2.45);
+  wall(39.85, 40.55, 5.55, 8);
   // west wall of corridor with door gap z=2.3-5.7
   wall(26 - W, 26 + W, 0, 2.3);
   wall(26 - W, 26 + W, 5.7, 8);
@@ -1682,6 +1687,7 @@ function exposeHook() {
       } : null;
     },
     /** First meshes hit along the camera's view axis (debug: what fills the screen). */
+    camBlockersAt(x, y, z) { const bb = new THREE.Box3(); return camBlockers.filter((o) => bb.setFromObject(o).containsPoint(new THREE.Vector3(x, y, z))).map((o) => ({ n: o.name, p: o.parent && o.parent.name, m: o.material && o.material.name, min: bb.setFromObject(o).min.toArray().map((v) => +v.toFixed(2)), max: bb.max.toArray().map((v) => +v.toFixed(2)) })); },
     camHit(a, b) { return camGrid ? segmentHit(camGrid, a[0], a[1], a[2], b[0], b[1], b[2]) : null; },
     debugRay(nx = 0, ny = 0) {
       const rc = new THREE.Raycaster();

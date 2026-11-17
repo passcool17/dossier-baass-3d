@@ -76,7 +76,7 @@ for (const v of VIEWS) {
     });
     fr.sort((a, b) => a - b);
     const p95 = fr[Math.min(fr.length - 1, Math.ceil(fr.length * 0.95) - 1)];
-    return { calls: __game.calls, tris: __game.tris, maxCalls: maxC, maxTris: maxT, fps: +(n * 1000 / ms).toFixed(1), frameP95: +p95.toFixed(1), char: __game.character && { state: __game.character.state, hidden: __game.character.hidden }, onScreen: __game.projectCharacter().onScreen, zone: __game.zone };
+    return { calls: __game.calls, tris: __game.tris, maxCalls: maxC, maxTris: maxT, fps: +(n * 1000 / ms).toFixed(1), frameP95: +p95.toFixed(1), char: __game.character && { state: __game.character.state, hidden: __game.character.hidden }, onScreen: __game.projectCharacter ? __game.projectCharacter().onScreen : null, zone: __game.zone };
   }, seconds * 1000);
   rows.push({ id: v.id, label: v.label, ...s });
   if (shots) await page.screenshot({ path: `${shots}/${tag}-${v.id}-${W}x${H}.png` });
