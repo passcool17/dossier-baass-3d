@@ -397,15 +397,43 @@ function prepareObject(root) {
 }
 
 const FURNITURE_RE = /^(lab-box|lab-cabinet|lab-things|server-|machine)/;
+/** v0.3.2: collider = footprint of the vertices in the body band (ground
+ *  to +1.8 m), not the whole AABB. Roofs, eaves and the ×8 Kenney hangars'
+ *  overhangs used to seal the path to the bunker and swallow evidence. */
+const fpV = new THREE.Vector3();
+function footprintBox(object, band = 1.8) {
+  tmpBox.setFromObject(object);
+  if (tmpBox.isEmpty()) return tmpBox;
+  const y0 = Math.max(tmpBox.min.y, -0.05), y1 = y0 + band;
+  const fb = new THREE.Box3();
+  object.updateMatrixWorld(true);
+  object.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || !o.geometry) return;
+    const pos = o.geometry.getAttribute('position');
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i++) {
+      fpV.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (fpV.y >= y0 - 0.05 && fpV.y <= y1) fb.expandByPoint(fpV);
+    }
+  });
+  if (fb.isEmpty()) return tmpBox;
+  fb.min.y = tmpBox.min.y; fb.max.y = tmpBox.max.y;
+  return tmpBox.copy(fb);
+}
 function addSolidFrom(object, pad = 0.05) {
+  const furn = FURNITURE_RE.test(object.name || '');
+  // Underground (lab) props keep their full box; surface props use footprints.
   tmpBox.setFromObject(object);
   if (tmpBox.isEmpty()) return;
+  if (tmpBox.min.y > -0.5) footprintBox(object);
+  // Flat litter (debris sheets, papers < 0.25 m) is walked over.
+  if (!furn && tmpBox.max.y - Math.max(tmpBox.min.y, 0) < 0.25) return;
   solids.push({
     minx: tmpBox.min.x - pad, maxx: tmpBox.max.x + pad,
     minz: tmpBox.min.z - pad, maxz: tmpBox.max.z + pad,
     miny: tmpBox.min.y, maxy: tmpBox.max.y,
     // v0.3.1: furniture blocks the player, not the camera (it rises over it).
-    furn: FURNITURE_RE.test(object.name || ''),
+    furn,
   });
 }
 
@@ -973,12 +1001,16 @@ function updatePlayer(dt) {
   if (z === 'hangar' && tr3bState === 'idle' && collected.size >= 2) triggerTR3B();
 }
 
+const PICKUP_RADIUS = 2.6;
+const AUTO_PICKUP_RADIUS = 1.3;
 function nearestEv() {
-  let best = null, bestD = 2.6;
+  let best = null, bestD = PICKUP_RADIUS;
   for (const ev of EVIDENCE) {
     if (collected.has(ev.id)) continue;
     const n = evidenceNodes.get(ev.id);
     if (!n || !n.visible) continue;
+    // Horizontal distance, same floor only (the lab is under the desert).
+    if (Math.abs(n.position.y - player.pos.y) > 2.5) continue;
     const d = Math.hypot(n.position.x - player.pos.x, n.position.z - player.pos.z);
     if (d < bestD) { bestD = d; best = ev; }
   }
@@ -1322,9 +1354,10 @@ async function buildWorld(onProg) {
       m.needsUpdate = true;
     }
   });
-  // recompute solid
+  // recompute solid: v0.3.2, only the saucer's core (the hull rim is tilted
+  // and mostly above head height; the whole AABB used to swallow the site).
   solids.pop();
-  addSolidFrom(ufo);
+  solids.push({ minx: -8 - 3.2, maxx: -8 + 3.2, minz: 45 - 3.2, maxz: 45 + 3.2, miny: -3, maxy: 5 });
   scene.add(makeScorch());
   const debrisPlaces = [
     { x: -2.2, z: 48.2, ry: 0.5, scale: 1.65 },
@@ -1355,10 +1388,10 @@ async function buildWorld(onProg) {
 
   // —— Evidence props ——
   const evPos = {
-    'area-other': { x: -13, z: 9.2, y: 0.85, zone: 'ranch' },      // by shed
+    'area-other': { x: -13, z: 13.4, y: 0.02, zone: 'ranch' },     // v0.3.2: in front of the shed (was inside its collider)
     'proj-engagement': { x: -18, z: -8, y: 0.02, zone: 'ranch' },  // field / truck
     'area-materials': { x: 6.2, z: -7.2, y: 0.55, zone: 'hangar' },
-    'area-control': { x: 16.4, z: -7.2, y: 0.55, zone: 'hangar' },
+    'area-control': { x: 16.4, z: -3.0, y: 0.02, zone: 'hangar' }, // v0.3.2: outside hangar B (was inside it)
     'area-lift': { x: 47.2, z: 8, y: LAB_Y, zone: 'lab' },              // by cabinet
     'area-spatial': { x: 53, z: 15.2, y: LAB_Y, zone: 'lab' },
     'roswell-pio': { x: -11, z: 41.2, y: 0.02, zone: 'wreck' },
@@ -1622,6 +1655,15 @@ function loop() {
     updatePlayer(dt);
     updateTR3B(dt);
     nearestEvidence = nearestEv();
+    // v0.3.2: walking onto a file (≤ 1.3 m) collects it, no button needed;
+    // Collecter stays for anything within PICKUP_RADIUS.
+    if (nearestEvidence && $('sheet').classList.contains('hidden')) {
+      const n = evidenceNodes.get(nearestEvidence.id);
+      if (n && Math.hypot(n.position.x - player.pos.x, n.position.z - player.pos.z) <= AUTO_PICKUP_RADIUS) {
+        collectEvidence(nearestEvidence.id);
+        nearestEvidence = null;
+      }
+    }
     if (nearestEvidence) {
       $('bAct').classList.remove('hidden');
       $('bAct').textContent = 'Collecter';
@@ -1789,6 +1831,42 @@ function exposeHook() {
     get evidence() { return EVIDENCE.map((e) => e.id); },
     startGame, goMenu, replay, resetRun,
     collect(id) { return collectEvidence(id, { silent: false }); },
+    /** v0.3.2 test hook: flood-fill the walkable XZ grid from the player with
+     *  the game's own collideXZ, and report how close each evidence can be
+     *  approached (horizontal) vs the pickup radius. Read-only. */
+    reachability(step = 0.3) {
+      const x0 = -55, x1 = 62, z0 = -30, z1 = 72;
+      const nx = Math.floor((x1 - x0) / step) + 1, nz = Math.floor((z1 - z0) / step) + 1;
+      const free = (x, z) => { const c = collideXZ(x, z); return Math.abs(c.x - x) < 1e-6 && Math.abs(c.z - z) < 1e-6; };
+      const seen = new Uint8Array(nx * nz);
+      const sx = Math.round((player.pos.x - x0) / step), sz = Math.round((player.pos.z - z0) / step);
+      const q = [sx + sz * nx]; seen[q[0]] = 1;
+      const pts = [];
+      for (let h = 0; h < q.length; h++) {
+        const id = q[h], ix = id % nx, iz = (id - ix) / nx;
+        const x = x0 + ix * step, z = z0 + iz * step;
+        pts.push(x, z);
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const jx = ix + dx, jz = iz + dz;
+          if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+          const j = jx + jz * nx;
+          if (seen[j]) continue;
+          const X = x0 + jx * step, Z = z0 + jz * step;
+          if (!free(X, Z) || !free((x + X) / 2, (z + Z) / 2)) continue;
+          seen[j] = 1; q.push(j);
+        }
+      }
+      return EVIDENCE.map((ev) => {
+        const n = evidenceNodes.get(ev.id);
+        let best = Infinity, bx = 0, bz = 0;
+        for (let i = 0; i < pts.length; i += 2) {
+          const d = Math.hypot(pts[i] - n.position.x, pts[i + 1] - n.position.z);
+          if (d < best) { best = d; bx = pts[i]; bz = pts[i + 1]; }
+        }
+        return { id: ev.id, zone: zoneAt(n.position.x, n.position.z), x: n.position.x, y: n.position.y, z: n.position.z,
+          itemFree: free(n.position.x, n.position.z), minDist: +best.toFixed(2), best: [bx, bz], radius: PICKUP_RADIUS, reachable: best < PICKUP_RADIUS - 0.1, visible: n.visible };
+      }).concat([{ cells: pts.length / 2 }]);
+    },
     collectSilent(id) { return collectEvidence(id, { silent: true }); },
     triggerTR3B,
     tr3bSnap(phase) {
