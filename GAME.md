@@ -1,4 +1,4 @@
-# Dossier BAASS · 3D — v0.2.5
+# Dossier BAASS · 3D — v0.3.0
 
 - Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
@@ -14,6 +14,38 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+## v0.3.0 — détective jouable, caméra troisième personne, chargement robuste (16 nov. 2026)
+
+### « GLB 404 » : cause réelle
+
+Aucun GLB ne renvoyait 404 (arbre du dépôt, arbre servi par Pages et fichiers cités par le code : 0 manquant). Le rapport venait du script du portail QA (`/workspace/qa/portail-passcool/v1d9614a/results.json`, 16 nov. 21:01, heure de Toronto) : il ouvrait le jeu 800 ms puis coupait le réseau du navigateur ; `container-b-v1.glb` échouait alors en `net::ERR_INTERNET_DISCONNECTED` et `buildWorld` mourait sur « Failed to fetch ». La ligne « 404 » venait d’autres pages du même passage. Vraie faiblesse corrigée : un seul échec parmi ~40 chargements tuait le démarrage. Maintenant `loadWithRetry` (4 essais, attente du réseau) et, en dernier recours, « Connexion perdue pendant le chargement… » avec un bouton **Réessayer**.
+
+### Détective
+
+- Fichier : `assets/models/detective_v1.glb` (1 251 716 o, md5 `257c20b5c0a0a72c17c1254db5eae307`), chargé en `?v=0.3.0` (précache SW versionné). 5 052 triangles, **1 appel**, matériau double face. `MeshoptDecoder` + `KTX2Loader` avec transcodeur **local** `./vendor/basis/` (aucun CDN).
+- Animations Idle (3,000 s), Walk (1,133 s), Run (0,733 s) mélangées selon la vitesse (`blendWeights` dans `character.js`), vitesse analogique du pad (marche 1,9 m/s, course 5,2 m/s).
+- Secours automatique : `man-v1.glb` habillé (Quaternius, CC0) si le fichier final ne charge pas ; `?char=placeholder` le force.
+- Crédit (écran Crédits et tableau Ressources) : « Private Investigator (Detective) » par **Jungle Jim**, **CC BY 4.0**, https://skfb.ly/oPEIo.
+- Bug corrigé au passage : l’enquêteur était invisible depuis la v0.2.x (boîte englobante lue avant `skeleton.update()`, échelle ~6e8).
+
+### Caméra et déplacement
+
+- Caméra troisième personne lissée (position k 10, regard k 16), `placeCameraSafe` + coupe sur la vraie géométrie du bunker (`camgrid.js`, grille de triangles, ~0,01 ms par rayon au lieu de 0,51 ms avec `Raycaster`). Le détective se cache si la caméra est collée à sa tête.
+- Couloirs du labo : les deux `corridor-wide` étaient tournés de 90° (murs **en travers** du passage, d’où la vue noire « labo regard est »). Remis à `ry 0` ; ailettes de porte à x = 40 ajoutées aux collisions.
+- Rampe : sol de collision linéaire = dalle visible ; caméra sous le sable ; le chapeau reste dans le cadre en portrait.
+- Déplacement relatif à la caméra via le module partagé `touch-controls` **1.0.2** (un second doigt n’accapare plus le pad ; `signs.test.mjs` 24/24). WASD, flèches et manette suivent le même sens que le pad. Apparition corrigée (`safeSpot`) : plus de glissade à l’épave.
+
+### Tests (box, charge ~25–45)
+
+- `t-joystick.cjs` : vrai toucher CDP sur le pad, haut/bas/gauche/droite à 412×915 et 915×412 dans ranch, hangar, entrée, rampe, labo, épave et passage de zone ; haut = loin de la caméra. Plus clavier, manette, regard, dégagement caméra (rampe, labo, serveurs, salle, couloir) et détective visible. **244/244 PASS** (f030f4c). Les attentes sont en images rendues, pas en millisecondes, car la box tourne à 1–6 fps sous charge.
+- `t01.js` **PASS**, `quotes.test.mjs` **PASS**, `t-sw-upgrade.cjs` **PASS** (0.2.5 → 0.3.0, ancien cache supprimé).
+
+### Limites
+
+- `measure.mjs` attend `__c204` et expire sur ce jeu : mesures via `tools/measure-zones.mjs` (mêmes drapeaux angle-gl).
+- Fps box non représentatifs (charge très élevée) ; au labo, le détective coûte environ la moitié des fps llvmpipe par rapport à la v0.2.5 (où l’enquêteur était invisible). À mesurer sur le S20 FE avec `?fps=1`.
+- À la jonction des couloirs et dans la rampe, la caméra reste proche (tunnel étroit).
 
 ## v0.2.5 — regard dans le bon sens, caméra de la rampe (13 nov. 2026)
 
@@ -500,7 +532,8 @@ Les kits ont été téléchargés uniquement depuis les pages officielles HTTPS.
 | Camion (`truck`) | [Quaternius, Poly Pizza](https://poly.pizza/m/cXw6oiFtZ8) | CC0 1.0 |
 | Clôtures bois et métal | [Quaternius](https://poly.pizza/m/e02PFKKhbr) | CC0 1.0 |
 | Débris et papiers | [Quaternius](https://poly.pizza/m/WrIiMMxyEP) | CC0 1.0 |
-| Enquêteur (`man-v1.glb`, animations Idle / Walk / Run / Standing, maillages fusionnés) | [Quaternius Ultimate Modular Men](https://quaternius.com/packs/ultimatemodularcharacters.html) | CC0 1.0 |
+| **Détective jouable** (`assets/models/detective_v1.glb`, 1 251 716 o, 5 052 tris, 1 appel, Idle / Walk / Run, meshopt + KTX2), depuis la v0.3.0 | [« Private Investigator (Detective) » par Jungle Jim, Sketchfab](https://skfb.ly/oPEIo), adapté par Modélisation / Rig / Rendu | **CC BY 4.0** |
+| Détective de secours (`man-v1.glb`, Idle / Walk / Run / Standing, manteau et chapeau ajoutés) — seulement si `detective_v1.glb` ne charge pas, ou `?char=placeholder` | [Quaternius Ultimate Modular Men](https://quaternius.com/packs/ultimatemodularcharacters.html) | CC0 1.0 |
 | Soucoupe de l’épave (`ufo-v1.glb`) | [hat_my_guy, Poly Pizza](https://poly.pizza/m/NgURFR5T9m) | CC0 1.0 (Public Domain) |
 | `assets/tr3b-v1.glb` (67 456 o, 2 666 tris, 2 appels) | [TR-3B by Dylusion, Sketchfab](https://sketchfab.com/3d-models/50d8e1fdffad4f8a9064e657bda9c248), livré par Rendu | **CC BY-NC 4.0** — jeu gratuit, sans pub |
 | Chemises, classeurs, armoires, instruments, baies (`props-*-v1.glb`) | Sketchfab, voir le tableau de la v0.2.0 (PolyDavid, Amiel Goco, Naked Singularity Studio, Renafox, Spellkaze) | **CC BY 4.0** |
