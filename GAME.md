@@ -1,4 +1,4 @@
-# Dossier BAASS · 3D — v0.3.0
+# Dossier BAASS · 3D — v0.3.1
 
 - Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
@@ -14,6 +14,16 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+## v0.3.1 — corrections QA v0.3.0 (17 nov. 2026)
+
+- Lien : https://passcool17.github.io/dossier-baass-3d/?v=7f1b424 — `VERSION` **0.3.1**, cache SW `dossier-baass-3d-v0.3.1` seulement.
+- **Bug élevé corrigé** : en cas d’échec de chargement, le bouton **Réessayer** était sous le fondu noir (`#fade` z 80, opaque). `showLoadError()` efface le fondu, met `#loading` au-dessus (`.load-error`, z 90) et donne le focus au bouton, dans tous les chemins d’erreur (`buildWorld` et `boot().catch`). Nouveau test `tests/t-retry.cjs` : bloque `container-b-v1.glb`, vérifie avec `elementFromPoint` que le centre du bouton est le bouton, que l’écran n’est pas noir, puis débloque et réessaie (12/12 PASS, live).
+- **Bug moyen corrigé** (classeurs [47,6 ; 6,2]) : la pièce `corridor-wide-corner` posée en (50, 10) était **dans** les deux salles (murs traversables au milieu du labo), elle tirait la caméra sur la tête du détective. Retirée (les deux salles se touchent déjà). Le mobilier (classeurs, caisses, baies) bloque le joueur mais plus la caméra, qui passe au-dessus.
+- Rampe (46°) : caméra proche (1,1 m) et plongeante (~53°), pour que pad haut = haut de l’écran. Limite : sous le sable (toit du tunnel à y = 0), le chapeau touche le bord haut ; `directions-qa.cjs` marque encore **pad bas** sur la rampe (le détective passe sous la caméra figée du test, déplacement ≥ 1 m).
+- Retrait des aides de débogage `camHit` / `camBlockersAt`.
+
+Mesures live (`tools/measure-zones.mjs`, angle-gl, llvmpipe chargé) : max **74 appels / 61 144 tris** (épave, paysage) ; classeurs 26 / 29 066 et 39 / 31 506, détective visible partout. Tests live : `t-joystick.cjs` **254/254**, `t-retry.cjs` 12/12, `t-sw-upgrade.cjs` 0.3.0 → 0.3.1 PASS, `directions-qa.cjs` 238 cas, **2 inversions** (rampe pad bas, voir ci-dessus ; 16 en v0.3.0).
 
 ## v0.3.0 — détective jouable, caméra troisième personne, chargement robuste (16 nov. 2026)
 
