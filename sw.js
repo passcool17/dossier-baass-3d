@@ -37,7 +37,6 @@ const PRECACHE = [
   './assets/chimney-v1.glb',
   './assets/container-a-v1.glb',
   './assets/container-b-v1.glb',
-  './assets/corridor-wide-corner-v1.glb',
   './assets/corridor-wide-end-v1.glb',
   './assets/corridor-wide-v1.glb',
   './assets/debris-v1.glb',

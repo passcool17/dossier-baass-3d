@@ -396,6 +396,7 @@ function prepareObject(root) {
   return root;
 }
 
+const FURNITURE_RE = /^(lab-box|lab-cabinet|lab-things|server-|machine)/;
 function addSolidFrom(object, pad = 0.05) {
   tmpBox.setFromObject(object);
   if (tmpBox.isEmpty()) return;
@@ -403,6 +404,8 @@ function addSolidFrom(object, pad = 0.05) {
     minx: tmpBox.min.x - pad, maxx: tmpBox.max.x + pad,
     minz: tmpBox.min.z - pad, maxz: tmpBox.max.z + pad,
     miny: tmpBox.min.y, maxy: tmpBox.max.y,
+    // v0.3.1: furniture blocks the player, not the camera (it rises over it).
+    furn: FURNITURE_RE.test(object.name || ''),
   });
 }
 
@@ -759,7 +762,12 @@ function collectCamBlockers() {
   scene.traverse((o) => {
     if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh) return;
     let skip = false;
-    o.traverseAncestors((a) => { if (a.name === 'investigator' || a.name === 'tr3b' || (a.name && a.name.startsWith('evidence-'))) skip = true; });
+    o.traverseAncestors((a) => {
+      if (a.name === 'investigator' || a.name === 'tr3b' || (a.name && a.name.startsWith('evidence-'))) skip = true;
+      // v0.3.1: furniture (cabinets, crates, servers, lab things) does not pull
+      // the camera in; only the bunker shell (walls, floor, ceiling, frames) does.
+      if (a.name && /^(lab-box|lab-cabinet|lab-things|server-|paperclip|papers|prop-folder|machine)/.test(a.name)) skip = true;
+    });
     if (skip) return;
     const nm = (o.name || '') + ' ' + ((o.material && o.material.name) || '');
     if (/fluo|led|emergency|cone|sign|hazard|grate/i.test(nm)) return; // small / thin props
@@ -905,7 +913,7 @@ function updatePlayer(dt) {
       camLookSmooth.lerp(tmpV.set(rig.tx, rig.ty, rig.tz), kl);
     }
     tmpV2.copy(camLookSmooth);
-    const solidsAll = solids.concat(labWalls || []);
+    const solidsAll = solids.filter((b) => !b.furn).concat(labWalls || []);
     const rad = rig.ramp ? 0.18 : (rig.indoor ? 0.26 : 0.38);
     let want = { x: camSmooth.x, y: camSmooth.y, z: camSmooth.z };
     let geoClose = false;
@@ -917,6 +925,15 @@ function updatePlayer(dt) {
       if (w2 !== want) {
         geoClose = Math.hypot(w2.x - pivot.x, w2.y - pivot.y, w2.z - pivot.z) < 1.6;
         want = w2;
+      }
+    }
+    // Over furniture: if the camera spot is above a cabinet / crate / rack,
+    // lift it above the top (under the lab ceiling) instead of pulling in.
+    for (const b of solids) {
+      if (!b.furn || b.maxy == null) continue;
+      if (want.x > b.minx - 0.3 && want.x < b.maxx + 0.3 && want.z > b.minz - 0.3 && want.z < b.maxz + 0.3) {
+        const top = Math.min(b.maxy + 0.35, LAB_CEIL - 0.28);
+        if (want.y < top) want = { x: want.x, y: top, z: want.z };
       }
     }
     placeCameraSafe(camera, want, tmpV2, solidsAll, rad);
@@ -1075,7 +1092,7 @@ async function buildWorld(onProg) {
     'folder','folder-manilla','cabinet','lab-cabinet','lab-things','server-rack','paperclip',
     'building-l','building-a','building-f','building-s',
     'container-a','container-b','water-tower','chimney','tank',
-    'room-wide','room-small','corridor-wide','corridor-wide-corner','corridor-wide-end','gate-door',
+    'room-wide','room-small','corridor-wide','corridor-wide-end','gate-door',
     'box-large','box-small','machine-outdoor','screen-panel',
     'tree-tall','tree','rock-sand','rock','barrel',
   ];
@@ -1221,7 +1238,9 @@ async function buildWorld(onProg) {
   tintLabKit(placeGLB(loaded['corridor-wide'], { x: 38, z: 4, y: labY, ry: 0, name: 'lab-corridor-2', collide: false }));
   tintLabKit(placeGLB(loaded['room-wide'], { x: 50, z: 4, y: labY, ry: 0, name: 'lab-room', collide: false }));
   tintLabKit(placeGLB(loaded['room-small'], { x: 50, z: 16, y: labY, ry: 0, name: 'lab-room-2', collide: false }));
-  tintLabKit(placeGLB(loaded['corridor-wide-corner'], { x: 50, z: 10, y: labY, ry: 0, name: 'lab-corner', collide: false }));
+  // v0.3.1: no 'corridor-wide-corner' here: at (50, 10) it sat INSIDE both rooms
+  // (walls across the lab at x ≈ 46 and z ≈ 6, walked through, and pulled the
+  // camera onto the detective at the cabinets). The two rooms meet directly.
   // inner blast door at bottom of ramp
   placeGLB(loaded['gate-door'], { x: 26.2, z: 4, y: labY, ry: Math.PI / 2, name: 'lab-door', collide: false });
   // Sketchfab CC BY props (paths in props.js)
