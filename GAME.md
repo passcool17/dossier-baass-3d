@@ -32,6 +32,8 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 - `area-other` posée devant la remise (−13 ; 13,4), `area-control` devant le hangar B (16,4 ; −3).
 - Ramassage **automatique** en marchant dessus (≤ 1,3 m à plat), « Collecter » reste à 2,6 m ; même étage seulement (|Δy| ≤ 2,5 m, le labo est sous le désert). Son + éclat doré + fiche à chaque preuve.
 
+- Hook de test `goto()` : les points « hangar » et « épave » sont maintenant à plus de 3,5 m des preuves. Avant, le ramassage automatique ouvrait la fiche pendant `directions-qa` et bloquait les tests de regard. La vue de l’épave est tournée vers la soucoupe.
+
 **Test obligatoire** `tests/t-evidence.cjs` : (A) atteignabilité de chaque preuve par la grille marchable ; (B) partie complète **au pad seul** (vrai toucher CDP sur `#joyL`, aucune téléportation, aucun `collect()`), chemin planifié par `__game.navPath()`, fiche fermée par un toucher sur « Continuer » ; vérifie **8 / 8**, l’écran de fin, 0 erreur, 412×915 et 915×412.
 
 ## v0.3.1 — corrections QA v0.3.0 (17 nov. 2026)
