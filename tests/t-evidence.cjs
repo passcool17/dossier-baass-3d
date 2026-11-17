@@ -129,6 +129,7 @@ async function run(browser, size) {
     if (!got) break;
   }
   const hud = await page.evaluate(() => document.getElementById('hudEvidence').textContent.trim());
+  await page.screenshot({ path: `${SHOTS}/hud-8of8-${size}.png` });
   ok(pre + 'hud.8of8', hud === '8 / 8', { hud });
   // End screen (needs the TR-3B sighting too; it flies over the hangar).
   let ended = false;
