@@ -1939,9 +1939,9 @@ function exposeHook() {
     goto(zone) {
       const spots = {
         ranch: [-20, 14],
-        hangar: [8, -6],
+        hangar: [9.5, -5.5],   // v0.3.2: 3.7 m from area-materials so test moves don't auto-collect
         lab: [36, 4],
-        wreck: [-10, 40],
+        wreck: [-11.5, 37],     // v0.3.2: 4.2 m from roswell-pio (auto-collect opened the sheet)
         entrance: [16.55, 1.85],
         ramp: [22.5, 4],
       };
@@ -1950,6 +1950,10 @@ function exposeHook() {
       const placed = teleportPlayer(s[0], s[1]);
       if (zone === 'entrance') {
         camYaw = 0.92;
+        camPitch = 0.12;
+      } else if (zone === 'wreck') {
+        // v0.3.2: the spot moved 4 m back from the evidence; face the saucer.
+        camYaw = Math.atan2(-8 - s[0], 45 - s[1]);
         camPitch = 0.12;
       } else if (zone === 'ramp') {
         // Look down the slope (≈0.8 rad) toward the lab door, so the
