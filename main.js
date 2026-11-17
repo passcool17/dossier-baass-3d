@@ -826,6 +826,11 @@ function cameraRig() {
   if (ramp && x > RAMP.x0 + 1.0 && Math.sin(camYaw) > 0.2) {
     hd = Math.max(0.6, Math.min(hd, (x - (RAMP.x0 + 0.3)) / Math.sin(camYaw)));
   }
+  // v0.3.1: the ramp is 46° steep. With the camera behind and looking down
+  // LESS than the slope, "away" (pad up) projects DOWN on screen. So on the
+  // ramp the camera sits close behind and high (looks down ~55°): walking
+  // down the slope moves up the screen, and the hat stays in frame.
+  if (ramp) hd = Math.min(hd, 1.1);
   let cy = y + offY;
   if (indoor && y < -0.5 && !ramp) cy = Math.min(cy, LAB_CEIL - 0.28);
   if (ramp) {
@@ -838,12 +843,10 @@ function cameraRig() {
     cy = Math.max(cy, y + 0.9);
     if (bx > RAMP.x0 + 0.2 || x > RAMP.x0 + 1.0) cy = Math.max(y + 0.5, Math.min(cy, -0.3));
   }
-  const ahead = ramp ? 1.2 : 0;
+  const ahead = ramp ? 0.6 : 0;
   const tx = x + Math.sin(camYaw) * ahead;
   const tz = z + Math.cos(camYaw) * ahead;
-  // Ramp: aim down the slope, but never below y + 0.45, so the hat stays in
-  // the portrait frame (camera is ~2.1 m above the feet, 1.75 m behind).
-  const ty = ramp ? Math.max(groundY(tx, tz) + lookH, y + 0.45) : y + lookH;
+  const ty = ramp ? y : y + lookH;
   return {
     x: x - Math.sin(camYaw) * hd,
     y: cy,
