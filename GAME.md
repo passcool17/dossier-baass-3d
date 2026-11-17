@@ -1,4 +1,4 @@
-# Dossier BAASS · 3D — v0.3.1
+# Dossier BAASS · 3D — v0.3.2
 
 - Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
@@ -14,6 +14,25 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+## v0.3.2 — les huit preuves enfin atteignables (17 nov. 2026)
+
+**Bug (signalé par Pascal)** : « PREUVES 0 / 8 », aucune preuve ne se ramassait, avant comme après l’arrivée du détective.
+
+**Cause** (mesurée avec le nouveau hook `__game.reachability()`, qui remplit la grille marchable avec le `collideXZ` du jeu, depuis le départ) : **6 preuves sur 8 étaient hors d’atteinte**. Les colliders étaient les boîtes englobantes complètes des modèles :
+
+- les hangars Kenney agrandis ×8 (toits, avant-toits) fermaient l’accès au pavillon : le bunker et ses deux preuves (`area-lift`, `area-spatial`) étaient **inaccessibles à pied** (les tests passaient par `goto`, une téléportation) ;
+- la boîte de la soucoupe (~13 × 13 m) avalait le site de l’épave : `roswell-pio` et `roswell-debris` étaient **dans** le collider ;
+- `area-other` était dans le collider de la remise (y 0,85), `area-control` dans le hangar B.
+- Le ramassage (2,6 m à plat + bouton « Collecter ») marchait ; c’était l’accès.
+
+**Correctifs** :
+
+- Colliders de surface = **empreinte au sol** (sommets entre le sol et +1,8 m), plus la boîte complète. Débris plats (< 0,25 m) franchissables. Soucoupe : noyau 6,4 × 6,4 m.
+- `area-other` posée devant la remise (−13 ; 13,4), `area-control` devant le hangar B (16,4 ; −3).
+- Ramassage **automatique** en marchant dessus (≤ 1,3 m à plat), « Collecter » reste à 2,6 m ; même étage seulement (|Δy| ≤ 2,5 m, le labo est sous le désert). Son + éclat doré + fiche à chaque preuve.
+
+**Test obligatoire** `tests/t-evidence.cjs` : (A) atteignabilité de chaque preuve par la grille marchable ; (B) partie complète **au pad seul** (vrai toucher CDP sur `#joyL`, aucune téléportation, aucun `collect()`), chemin planifié par `__game.navPath()`, fiche fermée par un toucher sur « Continuer » ; vérifie **8 / 8**, l’écran de fin, 0 erreur, 412×915 et 915×412.
 
 ## v0.3.1 — corrections QA v0.3.0 (17 nov. 2026)
 
