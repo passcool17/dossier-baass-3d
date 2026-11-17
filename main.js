@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.3.0 — Three.js r170. */
+/* Dossier BAASS 3D v0.3.1 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
