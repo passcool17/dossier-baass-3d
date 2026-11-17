@@ -15,9 +15,11 @@ export function reducedMotion() {
 export function groundY(x, z) {
   const r = RAMP;
   if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) {
+    // v0.3.0: follow the visible ramp slab (a straight plane, top face
+    // ~0.15 m above its centre line). The old smoothstep floated the now
+    // visible detective up to 0.6 m above / below the concrete.
     const t = Math.min(1, Math.max(0, (x - r.x0) / (r.x1 - r.x0)));
-    const s = t * t * (3 - 2 * t);
-    return s * LAB_Y;
+    return t * LAB_Y + 0.15 * Math.min(1, 6 * t, 6 * (1 - t));
   }
   const b = BUNKER;
   if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return LAB_Y;

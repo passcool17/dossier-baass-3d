@@ -17,7 +17,7 @@
  * Phaser 2D:
  *   screenRelative2D(x, y) returns {x, y} with screen-up as -Y.
  */
-export const VERSION = '1.0.1';
+export const VERSION = '1.0.2';
 
 const DEFAULT_DEADZONE = 0.08;
 const GAMEPAD_DEADZONE = 0.18;
@@ -201,6 +201,10 @@ export function createMoveInput(opts = {}) {
   function onPadDown(e) {
     if (destroyed) return;
     e.preventDefault();
+    // 1.0.2: a second finger landing on the pad must not steal it from the
+    // first one (the pad used to jump to the new finger, then stop dead
+    // when either finger lifted).
+    if (pad.active && e.pointerId !== pad.id) return;
     pad.active = true;
     pad.id = e.pointerId;
     if (element.setPointerCapture) {

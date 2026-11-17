@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.2.5';
+export const VERSION = '0.3.0';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -197,6 +197,13 @@ export const CREDITS = [
     license: 'CC0 1.0',
     url: 'https://poly.pizza/m/WrIiMMxyEP',
     note: 'Débris https://poly.pizza/m/WrIiMMxyEP , papiers https://poly.pizza/m/PTvW67lIoU',
+  },
+  {
+    name: 'Private Investigator (Detective) — personnage jouable',
+    author: 'Jungle Jim',
+    license: 'CC BY 4.0',
+    url: 'https://skfb.ly/oPEIo',
+    note: 'Détective jouable (Sketchfab), allégé pour mobile : 5 052 triangles, animations Idle, Walk et Run. Si le fichier ne charge pas, le jeu montre un détective de secours (« Man » de Quaternius, CC0, avec manteau et chapeau ajoutés).',
   },
   {
     name: 'Ultimate Modular Men Pack (personnage « Man »)',

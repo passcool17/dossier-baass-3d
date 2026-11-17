@@ -97,7 +97,7 @@ async function runView(browser, w, h, shots) {
   await page.evaluate(() => __game.showCredits());
   await sleep(200);
   const creditText = await page.evaluate(() => document.getElementById('crdList').innerText);
-  const needed = ['Kenney', 'Quaternius', 'hat_my_guy', 'Dylusion', 'CC0', 'CC BY-NC', 'PolyDavid', 'Amiel Goco', 'Naked Singularity', 'Renafox', 'Spellkaze', 'CC BY 4.0'];
+  const needed = ['Kenney', 'Quaternius', 'hat_my_guy', 'Dylusion', 'CC0', 'CC BY-NC', 'PolyDavid', 'Amiel Goco', 'Naked Singularity', 'Renafox', 'Spellkaze', 'Jungle Jim', 'CC BY 4.0'];
   for (const n of needed) ok(prefix + 'credits.' + n, creditText.includes(n), n + ' missing');
   if (shots) await page.screenshot({ path: OUT + '/dossier-baass-3d-credits-' + w + '.png', type: 'png' });
 
@@ -188,11 +188,17 @@ async function runView(browser, w, h, shots) {
     return { r, id, active: __game.pickupFx, collected: __game.collected.slice() };
   });
   ok(prefix + 'pickup.started', fx.r === true && (fx.active === true || fx.collected.includes(fx.id)), fx);
-  await sleep(1800);
-  const fx2 = await page.evaluate(() => ({
-    active: __game.pickupFx,
-    sheet: !document.getElementById('sheet').classList.contains('hidden'),
-  }));
+  // The FX runs on clamped frame time: on a loaded software GPU it can take
+  // longer than 1.8 s of wall time, so poll (max 10 s).
+  let fx2;
+  for (const t0 = Date.now(); ;) {
+    await sleep(300);
+    fx2 = await page.evaluate(() => ({
+      active: __game.pickupFx,
+      sheet: !document.getElementById('sheet').classList.contains('hidden'),
+    }));
+    if ((fx2.sheet && !fx2.active) || Date.now() - t0 > 10000) break;
+  }
   ok(prefix + 'pickup.sheet', fx2.sheet === true && fx2.active === false, fx2);
   await page.evaluate(() => { document.getElementById('sheet').classList.add('hidden'); __game.collectSilent && 0; });
   // close sheet properly

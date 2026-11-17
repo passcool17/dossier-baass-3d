@@ -467,3 +467,6 @@ button:disabled { opacity: 0.5; cursor: default; }
   #hudStats .chip-label { display: none; }
   #ttlSub { display: none; }
 }
+
+/* v0.3.0: retry after a dropped connection during loading */
+#bRetry { margin-top: 20px; min-height: 44px; min-width: 160px; }

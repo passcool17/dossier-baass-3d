@@ -1,5 +1,13 @@
 /**
- * Camera-relative movement and look for dossier-baass-3d v0.2.5.
+ * Camera-relative movement and look for dossier-baass-3d v0.3.0.
+ *
+ * v0.3.0: the pad is also driven with REAL CDP touch (Input.dispatchTouchEvent
+ * on #joyL, kind 'touch') in every zone, both orientations. For touch the
+ * world motion must match the finger: up = away from the camera (alongLook > 0),
+ * right = camera-right, etc. The visible character must follow the player,
+ * face the walking direction and leave Idle while moving. Camera clearance:
+ * in Rampe / Lab / Serveurs, at 4 yaws, no wall closer than 0.25 m on the
+ * camera's view axis (the v0.2.x lab view east sat inside a corridor frame).
  *
  * Stick / WASD: frozen-camera screen projection, up/right/down/left.
  * Look: real CDP touch on the right half (Input.dispatchTouchEvent), plus
@@ -12,8 +20,13 @@
 const { chromium } = require('/workspace/tools3d/node_modules/playwright-core');
 const BASE = process.argv[2] || 'http://127.0.0.1:8780/?t=joy';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The box GPU is llvmpipe and shared: wait for real rendered frames, not ms.
+const frames = (page, n = 3) => page.evaluate((n) => new Promise((r) => {
+  let k = 0; const f = () => { if (++k >= n) r(); else requestAnimationFrame(f); }; requestAnimationFrame(f);
+}), n);
 
 const ZONES = ['ranch', 'hangar', 'entrance', 'ramp', 'lab', 'wreck'];
+const TIGHT = { ramp: [22.5, 4], lab: [36, 4], servers: [56.4, 7.0], labroom: [50, 4], corridor: [33, 4], corridorMid: [30, 4] };
 const SPOTS = {
   ranch: [-20, 14],
   hangar: [17, 6],
@@ -47,6 +60,14 @@ function assertDir(dx, dy, dir, world, min = 0.02) {
     && Math.abs(along) >= min
     && Math.abs(along) >= Math.abs(across) * 0.4;
   if (screenOk) return { ok: true, dx, dy, along, moved, via: 'screen' };
+  // Walking toward a close camera skews the screen projection: fall back to
+  // the camera-relative world direction (up = away from the camera).
+  if (world && Number.isFinite(world.alongLook) && Number.isFinite(world.alongRight)) {
+    const wx = dir.ndc === 'y' ? world.alongRight : world.alongLook;
+    // dir.sign for 'y' is NDC (+1 = up = away from camera = alongLook > 0).
+    const want = dir.ndc === 'y' ? world.alongLook * dir.sign : world.alongRight * dir.sign;
+    if (want >= 0.15 && Math.abs(want) >= Math.abs(wx) * 1.2) return { ok: true, dx, dy, along, moved, via: 'world', alongLook: world.alongLook, alongRight: world.alongRight };
+  }
   return {
     ok: false,
     reason: !Number.isFinite(dx) ? 'nan' : (moved < min ? 'too small' : 'wrong sign/axis'),
@@ -100,7 +121,8 @@ async function place(page, zone) {
     document.getElementById('touch')?.classList.remove('hidden');
     if (document.pointerLockElement) document.exitPointerLock();
   }, { zone, spots: SPOTS });
-  await sleep(250);
+  await sleep(150);
+  await frames(page, 3);
 }
 
 async function poseAndScreen(page) {
@@ -132,6 +154,44 @@ async function joyDrag(page, sx, sy, holdMs) {
   await sleep(50);
 }
 
+/** Real finger on the pad: CDP touchStart at the pad centre, move, hold, end.
+ *  Samples the character mid-hold (state / weights / facing). */
+async function touchPadHold(page, sx, sy, holdMs) {
+  const vis = await page.evaluate(() => {
+    const t = document.getElementById('touch');
+    t?.classList.remove('hidden');
+    const r = document.getElementById('joyL').getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  if (vis.w < 40) throw new Error('joystick too small ' + JSON.stringify(vis));
+  const cx = vis.x + vis.w / 2, cy = vis.y + vis.h / 2, r = vis.w * 0.36;
+  const client = await page.context().newCDPSession(page);
+  let mid = null;
+  try {
+    const pt = (x, y) => [{ x, y, id: 7, radiusX: 8, radiusY: 8, force: 1 }];
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(cx, cy) });
+    for (let i = 1; i <= 5; i++) {
+      await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(cx + sx * r * i / 5, cy + sy * r * i / 5) });
+      await sleep(16);
+    }
+    const start = await page.evaluate(() => __game.player);
+    const t0 = Date.now();
+    await sleep(Math.round(holdMs * 0.6));
+    // Hold until the detective really walked ~0.45 m (slow shared GPU).
+    for (;;) {
+      mid = await page.evaluate(() => ({ ch: __game.character, p: __game.player }));
+      if (Math.hypot(mid.p.x - start.x, mid.p.z - start.z) > 0.45 || Date.now() - t0 > 3000) break;
+      await sleep(60);
+    }
+    await sleep(Math.round(holdMs * 0.2));
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    await client.detach().catch(() => {});
+  }
+  await sleep(50);
+  return mid;
+}
+
 async function keyHold(page, key, holdMs) {
   // Drive the window listeners the game / shared module use, and also
   // Playwright's keyboard, then wait until the player actually moves.
@@ -144,12 +204,12 @@ async function keyHold(page, key, holdMs) {
   }, key);
   await page.keyboard.down(key).catch(() => {});
   const start = await page.evaluate(() => ({ x: __game.player.x, z: __game.player.z }));
-  const deadline = Date.now() + Math.max(holdMs, 500);
+  const deadline = Date.now() + Math.max(holdMs, 2500);
   let moved = false;
   while (Date.now() < deadline) {
     await sleep(40);
     const p = await page.evaluate(() => ({ x: __game.player.x, z: __game.player.z }));
-    if (Math.hypot(p.x - start.x, p.z - start.z) > 0.18) {
+    if (Math.hypot(p.x - start.x, p.z - start.z) > 0.3) {
       moved = true;
       await sleep(90);
       break;
@@ -178,7 +238,9 @@ function worldAlong(before, after) {
 
 async function measureDir(page, dir, kind, holdMs) {
   const before = await poseAndScreen(page);
+  let mid = null;
   if (kind === 'joy') await joyDrag(page, dir.sx, dir.sy, holdMs);
+  else if (kind === 'touch') mid = await touchPadHold(page, dir.sx, dir.sy, holdMs);
   else await keyHold(page, dir.key, holdMs);
   const after = await page.evaluate((b) => {
     const p = __game.player;
@@ -197,6 +259,27 @@ async function measureDir(page, dir, kind, holdMs) {
   const w = assertDir(dx, dy, dir, world);
   w.world = world;
   w.dist = Math.hypot(after.x - before.x, after.z - before.z);
+  if (kind === 'touch') {
+    // Finger direction in the world: up = away from camera, right = camera-right.
+    const want = { up: ['alongLook', 1], down: ['alongLook', -1], right: ['alongRight', 1], left: ['alongRight', -1] }[dir.name];
+    const along = world[want[0]] * want[1];
+    const across = Math.abs(world[want[0] === 'alongLook' ? 'alongRight' : 'alongLook']);
+    w.worldOk = along > 0.05 && along >= across;
+    // Character: follows the player, faces the motion, not Idle mid-move.
+    const ch = mid && mid.ch;
+    if (ch) {
+      const mvYaw = Math.atan2(world.ax - world.bx, world.az - world.bz);
+      let dyaw = Math.abs(((ch.yaw - mvYaw) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
+      w.charFollow = Math.hypot(ch.x - mid.p.x, ch.z - mid.p.z) < 0.01;
+      w.charFacing = dyaw < 0.6;
+      w.charState = ch.state;
+      w.charMoving = ch.state !== 'idle' && ch.speed > 0.5;
+      w.dyaw = +dyaw.toFixed(3);
+    } else {
+      w.charFollow = w.charFacing = w.charMoving = false;
+    }
+    w.ok = w.ok && w.worldOk && w.charFollow && w.charFacing && w.charMoving;
+  }
   return w;
 }
 
@@ -226,7 +309,7 @@ async function oneDir(page, dir, kind, holdMs, zone) {
 }
 
 async function runDirs(page, results, tag, holdMs, zone) {
-  for (const kind of ['joy', 'key']) {
+  for (const kind of ['touch', 'joy', 'key']) {
     for (const dir of DIRS) {
       if (zone) await place(page, zone);
       const w = await oneDir(page, dir, kind, holdMs, zone);
@@ -366,7 +449,8 @@ async function testLook(page, results, prefix) {
     window.__joyPrevPads = navigator.getGamepads.bind(navigator);
     navigator.getGamepads = () => [pad];
   });
-  await sleep(280);
+  await sleep(200);
+  await frames(page, 4);
   after = await aheadAfter(page, before);
   await page.evaluate(() => {
     if (window.__joyPrevPads) navigator.getGamepads = window.__joyPrevPads;
@@ -422,6 +506,39 @@ async function runView(browser, w, h, results) {
       ok(results, prefix + 'ramp.hud', hud === 'Rampe', { hud });
     }
     await runDirs(page, results, prefix + zone, hold, zone);
+  }
+
+  // Camera clearance in tight spots, 4 yaws each.
+  for (const [name, spot] of Object.entries(TIGHT)) {
+    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      await page.evaluate(({ spot, yaw, name }) => {
+        __game.goto(name === 'ramp' ? 'ramp' : 'lab');
+        __game.setPlayer(spot[0], spot[1]);
+        __game.setCamYaw(yaw, name === 'ramp' ? 0.68 : 0.3);
+        __game.clearCamera();
+      }, { spot, yaw, name });
+      await sleep(200);
+      await frames(page, 4);
+      const r = await page.evaluate(() => {
+        const hits = [];
+        for (const [x, y] of [[0, 0], [-0.6, 0], [0.6, 0], [0, 0.6], [0, -0.6]]) {
+          const h = __game.debugRay(x, y).find((q) => !['mesh_0', 'mesh_0_1', 'mesh_0_2', 'mesh_0_3', 'mesh_0_4', 'mesh_0_5', 'detective-hat', 'detective-coat'].includes(q.name));
+          hits.push(h ? h.d : 99);
+        }
+        return { near: Math.min(...hits), hits, cam: __game.cameraPos, p: __game.player, ch: __game.character && __game.character.hidden };
+      });
+      // No near-plane cut: every probe hits geometry beyond the near plane,
+      // and the view axis has at least 0.25 m of room (or the character).
+      ok(results, prefix + 'camera.clear.' + name + '.' + yaw.toFixed(2), r.near > r.cam.near + 0.01 && r.hits[0] > 0.25, r);
+    }
+  }
+  // Character on screen in open zones.
+  for (const zone of ['ranch', 'hangar', 'wreck']) {
+    await place(page, zone);
+    await frames(page, 4);
+    const r = await page.evaluate(() => ({ pc: __game.projectCharacter(), b: __game.characterBounds() }));
+    const hgt = r.b ? r.b.max[1] - r.b.min[1] : 0;
+    ok(results, prefix + 'character.visible.' + zone, r.pc.onScreen && r.b && r.b.visible && hgt > 1.4 && hgt < 2.2, { pc: r.pc, hgt });
   }
 
   const errGame = errors.filter((e) => !/favicon/i.test(e));

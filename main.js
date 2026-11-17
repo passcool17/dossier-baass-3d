@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.2.5 — Three.js r170. */
+/* Dossier BAASS 3D v0.3.0 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -12,6 +12,8 @@ import {
   EVIDENCE, ZONES, CREDITS, ASSETS_USED, SOUND_CREDITS,
 } from './data.js';
 import { propUrl } from './props.js';
+import { buildTriGrid, segmentHit } from './camgrid.js';
+import { CHARACTER, CHARACTER_FINAL_URL, CHARACTER_PLACEHOLDER_URL, createCharacter } from './character.js';
 import {
   LAB_Y, LAB_CEIL, BUNKER, RAMP,
   groundY, isIndoors, reducedMotion,
@@ -68,7 +70,21 @@ let player = {
   object: null,
   actions: {},
   moving: false,
+  speedCur: 0,     // smoothed ground speed (m/s), drives Idle/Walk/Run blend
+  char: null,      // character.js controller
+  charUrl: '',
+  charPlaceholder: true,
 };
+let camSnap = true;            // next frame: no camera smoothing (teleport)
+const camSmooth = new THREE.Vector3();
+// v0.3.0: real-geometry camera blockers for the bunker (Kenney corridor ribs,
+// room walls, ramp walls/ceiling). The AABB solids alone let the camera sit
+// inside a corridor frame (black screen when looking east in the lab).
+const camBlockers = [];
+let camGrid = null;
+let camProjNear = 0.15;
+const camDir = new THREE.Vector3();
+const camLookSmooth = new THREE.Vector3();
 let camYaw = Math.PI;
 let camPitch = 0.28;
 let camDist = 5.2;
@@ -316,10 +332,38 @@ ensureMoveInput();
 
 /* ---------- Asset loading ---------- */
 const gltfCache = new Map();
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+function waitOnline(maxMs = 20000) {
+  if (navigator.onLine !== false) return Promise.resolve();
+  return new Promise((res) => {
+    const done = () => { window.removeEventListener('online', done); res(); };
+    window.addEventListener('online', done);
+    setTimeout(done, maxMs);
+  });
+}
+/** v0.3.0: a dropped connection during the ~40 sequential GLB loads used to
+ *  kill buildWorld ("Failed to fetch") and leave the loading screen stuck.
+ *  Retry each file (backoff, wait for 'online'), then give up cleanly. */
+async function loadWithRetry(url, tries = 4) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await loader.loadAsync(url);
+    } catch (e) {
+      last = e;
+      if (i < tries - 1) {
+        console.warn('GLB retry', url, i + 1, e && e.message);
+        await waitOnline();
+        await sleepMs(400 * (i + 1) * (i + 1));
+      }
+    }
+  }
+  throw last;
+}
 async function loadGLB(name) {
   if (gltfCache.has(name)) return gltfCache.get(name);
   const url = propUrl(name);
-  const gltf = await loader.loadAsync(url);
+  const gltf = await loadWithRetry(url);
   gltfCache.set(name, gltf);
   return gltf;
 }
@@ -651,6 +695,111 @@ function onRampXZ(x, z) {
   return x >= RAMP.x0 && x <= RAMP.x1 && z >= RAMP.z0 && z <= RAMP.z1;
 }
 
+async function loadCharacter(url) {
+  let gltf = null;
+  let placeholder = url === CHARACTER_PLACEHOLDER_URL;
+  try {
+    // Versioned query: a cached older detective can never be served.
+    gltf = await loadWithRetry(placeholder ? url : url + '?v=' + VERSION, 4);
+  } catch (e) {
+    if (placeholder) throw e;
+    console.warn('character: final GLB unavailable, placeholder used', url, e && e.message);
+    url = CHARACTER_PLACEHOLDER_URL;
+    placeholder = true;
+    gltf = await loadWithRetry(url);
+  }
+  if (player.char) scene.remove(player.char.object);
+  const ch = createCharacter(gltf, { placeholder, prepare: (m) => sanitizeMaterials(m) });
+  player.char = ch;
+  player.charUrl = url;
+  player.charPlaceholder = placeholder;
+  player.object = ch.object;
+  player.actions = ch.actions;
+  mixer = ch.mixer;
+  ch.setPose(player.pos.x, player.pos.y, player.pos.z, player.yaw, 0, true);
+  scene.add(ch.object);
+  return ch;
+}
+
+/** Nearest free XZ spot (player radius) around (x, z). Fixes spawns that
+ *  landed inside a solid (e.g. goto('wreck') inside a debris box) and then
+ *  slid out on the first step. */
+function safeSpot(x, z) {
+  const free = (px, pz) => {
+    const c = collideXZ(px, pz);
+    return Math.abs(c.x - px) < 1e-6 && Math.abs(c.z - pz) < 1e-6;
+  };
+  if (free(x, z)) return { x, z };
+  for (let r = 0.4; r <= 6; r += 0.4) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      if (free(px, pz)) return { x: px, z: pz };
+    }
+  }
+  return { x, z };
+}
+
+function teleportPlayer(x, z) {
+  const s = safeSpot(x, z);
+  const y = groundY(s.x, s.z);
+  player.pos.set(s.x, y, s.z);
+  player.speedCur = 0;
+  if (player.char) player.char.setPose(s.x, y, s.z, player.yaw, 0, true);
+  else if (player.object) player.object.position.set(s.x, y, s.z);
+  camSnap = true;
+  return { x: s.x, y, z: s.z };
+}
+
+function collectCamBlockers() {
+  camBlockers.length = 0;
+  const b = new THREE.Box3();
+  const c = new THREE.Vector3();
+  scene.updateMatrixWorld(true);
+  scene.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh) return;
+    let skip = false;
+    o.traverseAncestors((a) => { if (a.name === 'investigator' || a.name === 'tr3b' || (a.name && a.name.startsWith('evidence-'))) skip = true; });
+    if (skip) return;
+    const nm = (o.name || '') + ' ' + ((o.material && o.material.name) || '');
+    if (/fluo|led|emergency|cone|sign|hazard|grate/i.test(nm)) return; // small / thin props
+    b.setFromObject(o);
+    if (b.isEmpty()) return;
+    b.getCenter(c);
+    const inBunker = c.x > BUNKER.x0 - 7 && c.x < BUNKER.x1 && c.z > BUNKER.z0 && c.z < BUNKER.z1;
+    if (!inBunker) return;
+    if (b.max.y > 1.0 && b.min.y > -0.5) return; // above ground: not the bunker
+    camBlockers.push(o);
+  });
+  camGrid = buildTriGrid(camBlockers, 1.0);
+}
+
+/** Pull the desired camera in front of the first real bunker surface on the
+ *  ray look → camera. Only indoors (cheap: a few hundred triangles). */
+const CAM_PROBES = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+function clipCameraToGeometry(look, desired) {
+  if (!camGrid) return desired;
+  camDir.set(desired.x - look.x, desired.y - look.y, desired.z - look.z);
+  const len = camDir.length();
+  if (len < 1e-3) return desired;
+  camDir.multiplyScalar(1 / len);
+  // Thick ray: centre + 4 offsets (camera right / up), so the wide landscape
+  // frustum does not clip a door frame beside the camera.
+  const rx = -camDir.z, rz = camDir.x;
+  const rl = Math.hypot(rx, rz) || 1;
+  const RX = (rx / rl) * 0.24, RZ = (rz / rl) * 0.24, UP = 0.2;
+  let hit = Infinity;
+  for (const [a, b] of CAM_PROBES) {
+    const ox = RX * a, oz = RZ * a, oy = UP * b;
+    const h = segmentHit(camGrid, look.x + ox, look.y + oy, look.z + oz, desired.x + ox, desired.y + oy, desired.z + oz);
+    if (h >= 0 && h < hit) hit = h;
+  }
+  if (hit === Infinity) return desired;
+  const d = Math.max(0.3, hit - 0.28);
+  if (d >= len) return desired;
+  return { x: look.x + camDir.x * d, y: look.y + camDir.y * d, z: look.z + camDir.z * d };
+}
+
 /** Third-person rig. On the ramp, a short, downward-looking camera
  *  that aims toward the lab door (not the sloped ceiling), without
  *  the lab-room LAB_CEIL clamp that was pinning the camera too high
@@ -659,15 +808,29 @@ function cameraRig() {
   const x = player.pos.x, z = player.pos.z, y = player.pos.y;
   const ramp = onRampXZ(x, z);
   const indoor = isIndoors(x, z, y) || currentZone === 'lab';
-  const dist = ramp ? 1.7 : (indoor ? 3.05 : camDist);
-  const height = ramp ? 1.2 : (indoor ? 1.55 : 2.15);
-  const lookH = ramp ? 0.55 : (indoor ? 1.25 : 1.4);
+  const dist = ramp ? 2.6 : (indoor ? 3.05 : camDist);
+  const height = ramp ? 1.45 : (indoor ? 1.55 : 2.15);
+  const lookH = ramp ? 0.9 : (indoor ? 1.25 : 1.4);
   const offY = Math.sin(camPitch) * dist + height;
-  const hd = Math.cos(camPitch) * dist;
+  let hd = Math.cos(camPitch) * dist;
+  // Ramp, below the lip: keep the camera inside the tunnel (x ≥ x0 + 0.3),
+  // never up in the pavilion behind the concrete lip.
+  if (ramp && x > RAMP.x0 + 1.0 && Math.sin(camYaw) > 0.2) {
+    hd = Math.max(0.6, Math.min(hd, (x - (RAMP.x0 + 0.3)) / Math.sin(camYaw)));
+  }
   let cy = y + offY;
   if (indoor && y < -0.5 && !ramp) cy = Math.min(cy, LAB_CEIL - 0.28);
-  if (ramp) cy = Math.min(cy, y + 2.15);
-  const ahead = ramp ? 2.4 : 0;
+  if (ramp) {
+    // Steep (~46°) tunnel: sit ~1.55 m above the slab at the camera's own
+    // spot (behind / uphill), under the 2.85 m ceiling.
+    const bx = x - Math.sin(camYaw) * hd, bz = z - Math.cos(camYaw) * hd;
+    const gy = onRampXZ(bx, bz) ? groundY(bx, bz) : (bx < RAMP.x0 ? 0 : LAB_Y);
+    cy = Math.max(y + 1.2, Math.min(gy + 1.55 + Math.max(0, y - gy) * 0.1, y + 3.2));
+    // The desert ground plane (y = 0) roofs the tunnel: stay under it.
+    cy = Math.max(cy, y + 0.9);
+    if (bx > RAMP.x0 + 0.2 || x > RAMP.x0 + 1.0) cy = Math.max(y + 0.5, Math.min(cy, -0.3));
+  }
+  const ahead = ramp ? 1.2 : 0;
   const tx = x + Math.sin(camYaw) * ahead;
   const tz = z + Math.cos(camYaw) * ahead;
   const ty = ramp ? groundY(tx, tz) + lookH : y + lookH;
@@ -691,49 +854,84 @@ function updatePlayer(dt) {
     camPitch = lk.pitch;
     pollGamepadLook();
   }
-  const moving = Math.hypot(mv.x, mv.y) > 0.08;
+  const mag = Math.min(1, Math.hypot(mv.x, mv.y));
+  const moving = mag > 0.08 && running && !ended;
+  // Analog speed: pad magnitude 0..1 → 0..runSpeed, eased (no instant pop).
+  const tgtSpeed = moving ? mag * CHARACTER.runSpeed : 0;
+  const acc = tgtSpeed > player.speedCur ? 14 : 10;
+  player.speedCur += (tgtSpeed - player.speedCur) * (1 - Math.exp(-dt * acc));
+  if (player.speedCur < 0.02) player.speedCur = 0;
   player.moving = moving;
-  if (moving && running && !ended) {
+  if (moving) {
     // Shared module: read().y = +1 is forward (away from the camera).
     // cameraRelative uses the documented Three.js camera:
     //   (px - sin(yaw)*hd, pz - cos(yaw)*hd), look (sin(yaw), cos(yaw)).
-    const { x: fx, z: fz } = cameraRelative(mv.x, mv.y, camYaw);
-    const spd = player.speed;
-    let nx = player.pos.x + fx * spd * dt;
-    let nz = player.pos.z + fz * spd * dt;
+    const { x: fx, z: fz } = cameraRelative(mv.x / mag, mv.y / mag, camYaw);
+    player.dirX = fx; player.dirZ = fz;
+    player.yaw = Math.atan2(fx, fz);
+  }
+  if (player.speedCur > 0 && player.dirX != null) {
+    // On the ramp, keep the speed along the slope (~cos of the incline).
+    let spd = player.speedCur;
+    if (onRampXZ(player.pos.x, player.pos.z)) spd *= 0.86;
+    const nx = player.pos.x + player.dirX * spd * dt;
+    const nz = player.pos.z + player.dirZ * spd * dt;
     const c1 = collideXZ(nx, player.pos.z);
     const c2 = collideXZ(c1.x, nz);
     player.pos.x = c2.x;
     player.pos.z = c2.z;
-    player.yaw = Math.atan2(fx, fz);
   }
   player.pos.y = groundY(player.pos.x, player.pos.z);
-  if (player.object) {
+  if (player.char) {
+    player.char.setPose(player.pos.x, player.pos.y, player.pos.z, player.yaw, dt);
+    player.char.update(dt, player.speedCur);
+  } else if (player.object) {
     player.object.position.set(player.pos.x, player.pos.y, player.pos.z);
     player.object.rotation.y = player.yaw;
   }
-  if (mixer) {
-    const walk = player.actions.walk || player.actions.run;
-    const idle = player.actions.idle || player.actions.stand;
-    if (moving && walk) {
-      if (idle) idle.fadeOut(0.15);
-      walk.reset().fadeIn(0.15).play();
-      // already playing? just keep
-      if (!walk.isRunning()) walk.play();
-      if (idle && idle.isRunning()) idle.fadeOut(0.15);
-    } else if (idle) {
-      if (walk && walk.isRunning()) walk.fadeOut(0.2);
-      if (!idle.isRunning()) idle.reset().fadeIn(0.2).play();
-    }
-    mixer.update(dt);
-  }
-  // camera — collision so we never sit inside walls
+  // camera — smoothed follow, then wall collision so we never sit inside walls
   if (!camOverride) {
     const rig = cameraRig();
-    tmpV2.set(rig.tx, rig.ty, rig.tz);
+    if (camSnap || camSmooth.distanceToSquared(tmpV.set(rig.x, rig.y, rig.z)) > 64) {
+      camSmooth.set(rig.x, rig.y, rig.z);
+      camLookSmooth.set(rig.tx, rig.ty, rig.tz);
+      camSnap = false;
+    } else {
+      const kp = 1 - Math.exp(-dt * 10);
+      const kl = 1 - Math.exp(-dt * 16);
+      camSmooth.lerp(tmpV.set(rig.x, rig.y, rig.z), kp);
+      camLookSmooth.lerp(tmpV.set(rig.tx, rig.ty, rig.tz), kl);
+    }
+    tmpV2.copy(camLookSmooth);
     const solidsAll = solids.concat(labWalls || []);
     const rad = rig.ramp ? 0.18 : (rig.indoor ? 0.26 : 0.38);
-    placeCameraSafe(camera, { x: rig.x, y: rig.y, z: rig.z }, tmpV2, solidsAll, rad);
+    let want = { x: camSmooth.x, y: camSmooth.y, z: camSmooth.z };
+    let geoClose = false;
+    if (rig.indoor || rig.ramp) {
+      // Pivot = the detective's head (not the look target, which on the ramp
+      // is 2.4 m downhill and would pull the camera ahead of the player).
+      const pivot = tmpV.set(player.pos.x, player.pos.y + 1.2, player.pos.z);
+      const w2 = clipCameraToGeometry(pivot, want);
+      if (w2 !== want) {
+        geoClose = Math.hypot(w2.x - pivot.x, w2.y - pivot.y, w2.z - pivot.z) < 1.6;
+        want = w2;
+      }
+    }
+    placeCameraSafe(camera, want, tmpV2, solidsAll, rad);
+    // Near plane: small when squeezed against real geometry, so a frame beside
+    // the camera is drawn instead of cut open (no see-through).
+    const nearWant = geoClose ? 0.03 : 0.15;
+    if (nearWant !== camProjNear) {
+      camera.near = nearWant;
+      camProjNear = nearWant;
+      camera.updateProjectionMatrix();
+    }
+    // Never look through the character's head in tight spots.
+    if (player.char) {
+      const dHead = Math.hypot(camera.position.x - player.pos.x, camera.position.y - (player.pos.y + 1.45), camera.position.z - player.pos.z);
+      const dChest = Math.hypot(camera.position.x - player.pos.x, camera.position.y - (player.pos.y + 1.0), camera.position.z - player.pos.z);
+      player.char.setHidden(dHead < 0.7 || dChest < 1.45);
+    }
   }
 
   const z = zoneAt(player.pos.x, player.pos.z);
@@ -872,7 +1070,7 @@ async function buildWorld(onProg) {
   buildHorizon(scene);
   const names = [
     'barn','shed','truck','fence','metal-fence','debris','ufo','papers',
-    'folder','folder-manilla','cabinet','lab-cabinet','lab-things','server-rack','paperclip','man',
+    'folder','folder-manilla','cabinet','lab-cabinet','lab-things','server-rack','paperclip',
     'building-l','building-a','building-f','building-s',
     'container-a','container-b','water-tower','chimney','tank',
     'room-wide','room-small','corridor-wide','corridor-wide-corner','corridor-wide-end','gate-door',
@@ -1177,33 +1375,10 @@ async function buildWorld(onProg) {
     evidenceNodes.set(ev.id, obj);
   }
 
-  // —— Investigator ——
-  const manGltf = loaded.man;
-  const man = prepareObject(cloneScene(manGltf));
-  man.name = 'investigator';
-  // feet to y=0, height ~1.75
-  tmpBox.setFromObject(man);
-  const h = tmpBox.max.y - tmpBox.min.y || 1.8;
-  const sc = 1.75 / h;
-  man.scale.setScalar(sc);
-  man.updateMatrixWorld(true);
-  tmpBox.setFromObject(man);
-  man.position.y -= tmpBox.min.y;
-  man.position.x = player.pos.x;
-  man.position.z = player.pos.z;
-  scene.add(man);
-  player.object = man;
-  if (manGltf.animations && manGltf.animations.length) {
-    mixer = new THREE.AnimationMixer(man);
-    const clips = manGltf.animations;
-    const find = (re) => clips.find((c) => re.test(c.name));
-    const idleC = find(/Idle|Standing/i);
-    const walkC = find(/Walk/i);
-    const runC = find(/Run(?!ningJump)/i);
-    if (idleC) { player.actions.idle = mixer.clipAction(idleC); player.actions.idle.play(); }
-    if (walkC) { player.actions.walk = mixer.clipAction(walkC); player.actions.walk.setEffectiveWeight(0); }
-    if (runC) { player.actions.run = mixer.clipAction(runC); }
-  }
+  // —— Investigator (character.js) ——
+  // Final: Jungle Jim's detective (CC BY 4.0, assets/models/detective_v1.glb).
+  // Fallback: Quaternius "Man" (CC0) dressed as a detective if it fails.
+  await loadCharacter(qs.get('char') === 'placeholder' ? CHARACTER_PLACEHOLDER_URL : CHARACTER.url);
 
   // TR-3B (Dylusion CC BY-NC 4.0). Final GLB at assets/tr3b-v1.glb.
   tr3b = await loadTR3B();
@@ -1356,6 +1531,7 @@ function startGame() {
   closeSheet();
   running = true;
   ended = false;
+  camSnap = true;
   setMenuCine(false);
   runStart = performance.now();
   elapsed = 0;
@@ -1380,15 +1556,10 @@ function resetRun() {
   elapsed = 0;
   currentZone = 'ranch';
   enteredBunker = false;
-  player.pos.set(-16, 0, 18);
-  player.pos.y = 0;
   player.yaw = Math.PI;
   camYaw = Math.PI;
   camPitch = 0.28;
-  if (player.object) {
-    player.object.position.set(player.pos.x, player.object.position.y, player.pos.z);
-    player.object.rotation.y = player.yaw;
-  }
+  teleportPlayer(-16, 18);
   evidenceNodes.forEach((n) => { n.visible = true; });
   if (tr3b) { tr3b.visible = false; setTR3BLights(false); AudioSys.setHum(false); }
   if (worldLights) worldLights.applyAtmos('ranch');
@@ -1502,6 +1673,50 @@ function exposeHook() {
     get time() { return elapsed; },
     get score() { return computeScore(elapsed); },
     get player() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw }; },
+    get character() {
+      const c = player.char;
+      return c ? {
+        url: player.charUrl, placeholder: player.charPlaceholder, finalUrl: CHARACTER_FINAL_URL,
+        clips: c.clips, state: c.state, weights: c.weights, speed: player.speedCur,
+        yaw: c.yaw, hidden: c.hidden, x: c.object.position.x, y: c.object.position.y, z: c.object.position.z,
+      } : null;
+    },
+    /** First meshes hit along the camera's view axis (debug: what fills the screen). */
+    camHit(a, b) { return camGrid ? segmentHit(camGrid, a[0], a[1], a[2], b[0], b[1], b[2]) : null; },
+    debugRay(nx = 0, ny = 0) {
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+      return rc.intersectObjects(scene.children, true).filter((h) => shown(h.object)).slice(0, 5).map((h) => ({
+        name: h.object.name, parent: h.object.parent && h.object.parent.name, d: +h.distance.toFixed(2),
+        mat: h.object.material && (h.object.material.name || h.object.material.type),
+        side: h.object.material && h.object.material.side,
+      }));
+    },
+    get camBlockers() { let t = 0; for (const o of camBlockers) { const g = o.geometry; t += (g.index ? g.index.count : g.attributes.position.count) / 3; } return { n: camBlockers.length, tris: t, names: [...new Set(camBlockers.map((o) => o.name || o.parent?.name))].slice(0, 40) }; },
+    get fog() { return scene.fog ? { near: scene.fog.near, far: scene.fog.far, density: scene.fog.density, color: scene.fog.color.getHexString() } : null; },
+    /** World bounds of the visible character model (tests, sanity). */
+    characterBounds() {
+      if (!player.char) return null;
+      player.char.object.updateMatrixWorld(true);
+      const b = new THREE.Box3();
+      let meshes = 0, skinned = 0;
+      player.char.object.traverse((o) => {
+        if (!o.isMesh) return;
+        meshes++; if (o.isSkinnedMesh) skinned++;
+        if (o.isSkinnedMesh) { o.computeBoundingBox(); const bb = o.boundingBox.clone().applyMatrix4(o.matrixWorld); b.union(bb); }
+        else b.expandByObject(o);
+      });
+      const bones = {};
+      player.char.object.traverse((o) => { if (o.isBone && /^(Head|Hips|Foot\.?L|FootL|Foot_L)$/i.test(o.name)) bones[o.name] = o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(3)); });
+      return { min: b.min.toArray(), max: b.max.toArray(), meshes, skinned, visible: player.char.model.visible, scale: player.char.model.scale.toArray(), mpos: player.char.model.position.toArray(), bones };
+    },
+    /** Screen NDC of the character's chest with the live camera. */
+    projectCharacter() {
+      const v = new THREE.Vector3(player.pos.x, player.pos.y + 1.1, player.pos.z).project(camera);
+      return { x: v.x, y: v.y, z: v.z, onScreen: Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 && v.z < 1 };
+    },
+    get cameraPos() { return { x: camera.position.x, y: camera.position.y, z: camera.position.z, near: camera.near }; },
     get camYaw() { return camYaw; },
     get camPitch() { return camPitch; },
     projectPlayer() {
@@ -1528,14 +1743,12 @@ function exposeHook() {
       return cameraRig();
     },
     setCamYaw(y, p) {
+      camSnap = true;
       camYaw = y;
       if (p != null) camPitch = p;
     },
     setPlayer(x, z) {
-      const y = groundY(x, z);
-      player.pos.set(x, y, z);
-      if (player.object) player.object.position.set(x, y, z);
-      return { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+      return teleportPlayer(x, z);
     },
     /** Project a world point with a frozen camera pose (no wait for the render loop). */
     projectWithPose(px, py, pz, cam) {
@@ -1588,9 +1801,7 @@ function exposeHook() {
       };
       const s = spots[zone];
       if (!s) return false;
-      const y = groundY(s[0], s[1]);
-      player.pos.set(s[0], y, s[1]);
-      if (player.object) player.object.position.set(s[0], y, s[1]);
+      const placed = teleportPlayer(s[0], s[1]);
       if (zone === 'entrance') {
         camYaw = 0.92;
         camPitch = 0.12;
@@ -1601,7 +1812,7 @@ function exposeHook() {
         camYaw = Math.PI / 2;
         camPitch = 0.68;
       }
-      currentZone = zoneAt(s[0], s[1]) || (zone === 'entrance' ? 'hangar' : zone);
+      currentZone = zoneAt(placed.x, placed.z) || (zone === 'entrance' ? 'hangar' : zone);
       $('hudZone').textContent = ZONES[currentZone]?.name || currentZone;
       if (worldLights) worldLights.applyAtmos(currentZone === 'lab' ? 'lab' : currentZone);
       AudioSys.setZone(currentZone);
@@ -1680,7 +1891,7 @@ function exposeHook() {
     setCamera(x, y, z, tx, ty, tz) {
       camOverride = { x, y, z, tx, ty: ty ?? 2, tz };
     },
-    clearCamera() { camOverride = null; },
+    clearCamera() { camOverride = null; camSnap = true; },
     get tr3bInfo() {
       if (!tr3b) return { loaded: false };
       const b = new THREE.Box3().setFromObject(tr3b);
@@ -1728,6 +1939,7 @@ async function boot() {
   loader = makeLoader();
   try {
     await buildWorld((p) => { $('loadBar').style.width = Math.round(p * 100) + '%'; });
+    collectCamBlockers();
     mergeStaticByMaterial();
     scene.traverse((o) => {
       if (!o.isMesh || !o.material) return;
@@ -1751,7 +1963,9 @@ async function boot() {
     if (worldLights) worldLights.applyAtmos('dusk');
   } catch (err) {
     console.error('buildWorld:', err);
-    $('loading').querySelector('.load-sub').textContent = 'Erreur de chargement. Recharge la page.';
+    $('loading').querySelector('.load-sub').textContent = 'Connexion perdue pendant le chargement. Vérifie ton réseau, puis réessaie.';
+    const b = $('bRetry');
+    if (b) { b.classList.remove('hidden'); b.onclick = () => location.reload(); }
     return;
   }
   $('loading').classList.add('hidden');
