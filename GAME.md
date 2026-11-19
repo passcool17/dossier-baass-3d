@@ -1,9 +1,9 @@
-# Dossier BAASS · 3D — v0.3.3
+# Dossier BAASS · 3D — v0.3.4
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=0905db0
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=7981749
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit jeu : `0905db0756fd462d560ffb426fc335a3a784c80e` (0905db0), 18 novembre 2026 (heure de Toronto). Base v0.3.2 : `04f5e005f04469475bff9bea1b195c1051b589e2`.
-- État : v0.3.3 — kit de décor, animations Pickup/Inspect, cadrage du chapeau sur la rampe. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit jeu : `7981749a4112db0b3eae19dc5596535fd97c3f2f` (7981749), 19 novembre 2026 (heure de Toronto). Base v0.3.3 : `9ec315f0a483f4ae6d2571ed1a424bc1b29750d4`.
+- État : v0.3.4 — maison du ranch à côté de la grange rouge, plus le kit de décor, les animations Pickup/Inspect et le cadrage du chapeau sur la rampe. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -14,6 +14,47 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+## v0.3.4 — maison du ranch à côté de la grange (19 nov. 2026)
+
+Pièce faite sur le PC de Pascal (pipeline Hunyuan3D + nettoyage Blender), intégration légère et publication depuis la box, à partir de `9ec315f` (arbre propre).
+
+- Lien : https://passcool17.github.io/dossier-baass-3d/?v=7981749 — `VERSION` **0.3.4**, cache SW `dossier-baass-3d-v0.3.4` seulement. `ranch-house-v1.glb` (comme `detective_v1.glb` et `decor-v1.glb`) est demandé et précaché en `?v=` + VERSION.
+- **Maison du ranch** : `assets/ranch-house-v1.glb` (78 744 o, 2 898 tris, **1 appel**, 1 matériau, couleurs de sommet, meshopt + quantification). Origine au centre de la base, sol à 0, porche vers +Z glTF. Taille 6,85 × 7,22 × 6,29 m, même échelle que la grange (pas de redimensionnement). Source : pipeline Hunyuan3D + Blender sur le PC de Pascal. Chargement gardé (try/catch, comme le décor).
+- **Placement** : `(-32, 0)`, `ry = 0` (porche et portes de la grange vers le nord, l’aire de jeu). Grange à `(-24, 0)`. Écart à la grange **0,72 m**, à la clôture ouest (x ≈ −36, épaisseur 0,17 m) **0,50 m**. Aucun chevauchement avec la grange, la remise, la clôture ou le moulin à vent. Boîte : x [−35,423 ; −28,577], z [−3,608 ; 3,608], haut 6,29 m.
+- `?fx=` et ombres inchangés (ombres off par défaut, `pixelRatio` plafonné à 2). Aucune transmission. Three.js reste chargé depuis jsDelivr (déjà en v0.3.2) ; transcodeurs KTX2 / meshopt toujours locaux.
+
+### Mesures (box, 19 nov. 2026, heure de Toronto)
+
+`tools/measure-zones.mjs`, Chrome `--use-gl=angle --use-angle=gl`, Mesa llvmpipe. **Les fps de la box ne sont pas les fps d’un Samsung S20 FE.** `/home/box/opt/perf3d/measure.mjs` est couplé à `__c204` (autre jeu) et n’a pas été utilisé ici. 0 erreur console, 0 HTTP ≥ 400, en local et sur le lien live.
+
+| Vue | 412×915 appels / tris | 915×412 appels / tris |
+|---|---:|---:|
+| Ranch (goto défaut) | 24 / 53 950 (inchangé : maison hors champ) | **41** / **61 990** (v0.3.3 : 40 / 59 092, soit +1 appel / +2 898 tris) |
+| Maison + grange, vue de face | 18 / 42 982 | 31 / 60 600 |
+| Hangar | 18 / 38 776 | 25 / 42 160 |
+| Entrée du bunker | 36 / 63 600 | 57 / **71 752** |
+| Rampe | 34 (max 38) / 59 716 | 35 (max 36) / 60 584 |
+| Laboratoire | 27 / 53 950 | 29 / 55 302 |
+| Labo, regard est | 31 / 56 022 | 41 / 57 878 |
+| Serveurs | 21 / 42 566 | 19 / 46 926 |
+| Classeurs | 25 / 47 810 | 38 / 50 250 |
+| Site de l’épave | 22 / 41 666 | 26 / 41 918 |
+| TR-3B (vol stationnaire) | 38 / 53 464 | **59** / 67 706 |
+
+Pire vue de cette série : **59 appels** (TR-3B, paysage) et **71 752 tris** (entrée, paysage), comme en v0.3.3. Tous les appels restent **sous 100**. Temps JS (vue de face maison + grange) : 1,3 / 3,1 ms (p50 / p95) en portrait, 1,5 / 1,9 ms en paysage (mesure locale) ; 1,4 / 2,0 et 1,9 / 3,7 ms sur le live. Les fps box (environ 3–20 sous llvmpipe) ne remplacent pas une mesure S20 FE avec `?fps=1`.
+
+### Tests (box, lumière v8)
+
+- Boot v0.3.4, maison visible à côté de la grange, porche vers l’aire de jeu, 0 erreur console, 0 HTTP ≥ 400, en 412×915 et 915×412, en local et sur le live `?v=7981749`.
+- Aucun test complet des 4 directions ni des 8 preuves : seulement ce qui a changé (maison + boot).
+
+Captures : `/workspace/games3d/dossier-baass-3d-shots/v034/` (`ranch-house-412x915.png`, `ranch-house-915x412.png`, `ranch-house-34-412x915.png`).
+
+### Limites
+
+- Les notes basses déjà signalées (fiche de preuve qui peut masquer une partie de l’animation Inspect, carte de fin qui recouvre les puces du HUD en paysage, caméra dans la soucoupe à la 8/8 en paysage, frottement de clôture au ranch) ne font pas partie de cette passe.
+- Fps S20 FE non mesurés ici.
 
 ## v0.3.3 — décor, animations Pickup/Inspect, cadrage de la rampe (18 nov. 2026)
 
@@ -608,6 +649,7 @@ Les kits ont été téléchargés uniquement depuis les pages officielles HTTPS.
 | Débris et papiers | [Quaternius](https://poly.pizza/m/WrIiMMxyEP) | CC0 1.0 |
 | **Détective jouable** (`assets/models/detective_v1.glb`, 1 300 328 o, 5 052 tris, 1 appel, Idle / Walk / Run / Pickup / Inspect, meshopt + KTX2), depuis la v0.3.0, clips Pickup/Inspect en v0.3.3 | [« Private Investigator (Detective) » par Jungle Jim, Sketchfab](https://skfb.ly/oPEIo), adapté par Modélisation / Rig / Rendu puis le pipeline du PC de Pascal | **CC BY 4.0** |
 | **Kit de décor** (`assets/decor-v1.glb`, 112 140 o, 3 062 tris, 20 accessoires, couleurs de sommet, 1 matériau, meshopt), depuis la v0.3.3 | Pipeline Blender du PC de Pascal (`tools/decor_kit.py`) | **CC0 1.0** |
+| **Maison du ranch** (`assets/ranch-house-v1.glb`, 78 744 o, 2 898 tris, 1 appel, 1 matériau, couleurs de sommet, meshopt), depuis la v0.3.4 | Pipeline Hunyuan3D + Blender sur le PC de Pascal | Création du jeu — pipeline Hunyuan3D sur le PC de Pascal |
 | Détective de secours (`man-v1.glb`, Idle / Walk / Run / Standing, manteau et chapeau ajoutés) — seulement si `detective_v1.glb` ne charge pas, ou `?char=placeholder` | [Quaternius Ultimate Modular Men](https://quaternius.com/packs/ultimatemodularcharacters.html) | CC0 1.0 |
 | Soucoupe de l’épave (`ufo-v1.glb`) | [hat_my_guy, Poly Pizza](https://poly.pizza/m/NgURFR5T9m) | CC0 1.0 (Public Domain) |
 | `assets/tr3b-v1.glb` (67 456 o, 2 666 tris, 2 appels) | [TR-3B by Dylusion, Sketchfab](https://sketchfab.com/3d-models/50d8e1fdffad4f8a9064e657bda9c248), livré par Rendu | **CC BY-NC 4.0** — jeu gratuit, sans pub |
