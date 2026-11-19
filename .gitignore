@@ -6,3 +6,4 @@ test-results/
 assets/src/
 *.packed.glb
 /tmp/
+.aider*

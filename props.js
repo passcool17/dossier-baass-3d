@@ -113,6 +113,8 @@ export const PROPS = {
   'rock-sand': { file: 'assets/rock-sand-v1.glb', author: 'Kenney', license: 'CC0 1.0' },
   rock: { file: 'assets/rock-v1.glb', author: 'Kenney', license: 'CC0 1.0' },
   tr3b: { file: 'assets/tr3b-v1.glb', author: 'Dylusion', license: 'CC BY-NC 4.0' },
+  // v0.3.3: our own Blender décor kit (cacti, rocks, crates, poles, windpump…), vertex colours.
+  decor: { file: 'assets/decor-v1.glb', author: 'Dossier BAASS 3D (Blender)', license: 'CC0 1.0' },
 };
 
 export function propUrl(name) {

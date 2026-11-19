@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.3.2 — Three.js r170. */
+/* Dossier BAASS 3D v0.3.3 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -19,7 +19,7 @@ import {
   groundY, isIndoors, reducedMotion,
   makeDesertGround, createLights, buildBunker, updateBunkerLights,
   AudioSys, setupFade, PickupFX, pulseCraft, fitProp, sanitizeMaterials,
-  loadWorldTextures, buildHorizon, makeScorch, placeCameraSafe, addServerLeds,
+  loadWorldTextures, buildHorizon, makeScorch, placeCameraSafe, addServerLeds, buildDecor,
 } from './mood.js';
 
 const qs = new URLSearchParams(location.search);
@@ -112,12 +112,14 @@ let muted = false; // miroir de AudioSys.muted, pour la sauvegarde
 let lastCalls = 0;
 let lastTris = 0;
 let lastFps = 0;
+let lastJsMs = 0;
 let rafId = 0;
 let ready = false;
 const tmpV = new THREE.Vector3();
 const tmpV2 = new THREE.Vector3();
 const tmpBox = new THREE.Box3();
 let camOverride = null;
+let decorInfo = null; // v0.3.3 décor stats (tests)
 let menuCine = true;
 
 function $(id) { return document.getElementById(id); }
@@ -363,7 +365,9 @@ async function loadWithRetry(url, tries = 4) {
 async function loadGLB(name) {
   if (gltfCache.has(name)) return gltfCache.get(name);
   const url = propUrl(name);
-  const gltf = await loadWithRetry(url);
+  // Versioned query for the décor kit (same pattern as the detective) so a
+  // cached older decor-v1.glb can never be served after a VERSION bump.
+  const gltf = await loadWithRetry(name === 'decor' ? url + '?v=' + VERSION : url);
   gltfCache.set(name, gltf);
   return gltf;
 }
@@ -874,7 +878,17 @@ function cameraRig() {
   const ahead = ramp ? 0.6 : 0;
   const tx = x + Math.sin(camYaw) * ahead;
   const tz = z + Math.cos(camYaw) * ahead;
-  const ty = ramp ? y : y + lookH;
+  let ty = ramp ? y : y + lookH;
+  if (ramp) {
+    // v0.3.3: the steep look-down cut the hat at the top edge (NDC y > 1).
+    // Look down only as far as keeps the hat top (1.86 m) at ≤ 80 % of the
+    // half-FOV, never flatter than 40° (screen-up stays down-slope).
+    const hdT = hd + ahead;
+    const halfV = THREE.MathUtils.degToRad(camera.fov / 2);
+    const aHat = Math.atan2(cy - (y + 1.86), hd);
+    const a = Math.min(Math.atan2(cy - ty, hdT), Math.max(0.70, aHat + halfV * 0.8));
+    ty = cy - Math.tan(a) * hdT;
+  }
   return {
     x: x - Math.sin(camYaw) * hd,
     y: cy,
@@ -933,6 +947,12 @@ function updatePlayer(dt) {
   // camera — smoothed follow, then wall collision so we never sit inside walls
   if (!camOverride) {
     const rig = cameraRig();
+    // v0.3.3: a little wider on the ramp (tight tunnel, camera close behind).
+    const fovWant = (camera.aspect > 1 ? 55 : 62) + (rig.ramp ? 12 : 0);
+    if (Math.abs(camera.fov - fovWant) > 0.05) {
+      camera.fov += (fovWant - camera.fov) * (camSnap ? 1 : 1 - Math.exp(-dt * 6));
+      camera.updateProjectionMatrix();
+    }
     if (camSnap || camSmooth.distanceToSquared(tmpV.set(rig.x, rig.y, rig.z)) > 64) {
       camSmooth.set(rig.x, rig.y, rig.z);
       camLookSmooth.set(rig.tx, rig.ty, rig.tz);
@@ -1027,6 +1047,8 @@ function collectEvidence(id, { silent = false } = {}) {
   const ev = EVIDENCE.find((e) => e.id === id);
   if (!ev || collected.has(id)) return false;
   collected.add(id);
+  // v0.3.3: crouch and pick it up, then look at it (standing only; no-op without the clips).
+  if (!silent && player.char && player.char.playOnce && player.speedCur < 0.8) player.char.playOnce('pickup', 'inspect');
   const n = evidenceNodes.get(id);
   $('hudEvidence').textContent = collected.size + ' / ' + EVIDENCE.length;
   const armTr3b = () => {
@@ -1435,6 +1457,21 @@ async function buildWorld(onProg) {
     evidenceNodes.set(ev.id, obj);
   }
 
+  // v0.3.3: Blender décor kit (assets/decor-v1.glb), one merged mesh per zone.
+  try {
+    const decor = await loadGLB('decor');
+    decorInfo = buildDecor(scene, decor, {
+      addSolid(s) { solids.push(s); },
+      isFree(x, z, r) {
+        for (const b of solids.concat(labWalls)) {
+          if (x > b.minx - r && x < b.maxx + r && z > b.minz - r && z < b.maxz + r) return false;
+        }
+        return true;
+      },
+      keepClear: Object.values(evPos).map((p) => [p.x, p.z, 3.0]),
+    }).stats;
+  } catch (e) { console.warn('decor unavailable', e && e.message); }
+
   // —— Investigator (character.js) ——
   // Final: Jungle Jim's detective (CC BY 4.0, assets/models/detective_v1.glb).
   // Fallback: Quaternius "Man" (CC0) dressed as a detective if it fails.
@@ -1648,6 +1685,7 @@ function replay() {
 let frames = 0, fpsT = 0, fpsAcc = 0;
 function loop() {
   rafId = requestAnimationFrame(loop);
+  const js0 = performance.now();
   const dt = Math.min(0.05, clock.getDelta());
   if (running && !ended) {
     elapsed = (performance.now() - runStart) / 1000;
@@ -1721,6 +1759,7 @@ function loop() {
     }
   }
   renderer.info.reset();
+  lastJsMs = performance.now() - js0;
 }
 
 /* ---------- Hook & boot ---------- */
@@ -1791,9 +1830,11 @@ function exposeHook() {
     get calls() { return lastCalls; },
     get tris() { return lastTris; },
     get fps() { return lastFps; },
+    get jsMs() { return lastJsMs; },
     get gpu() { return gpuInfo; },
     get collected() { return [...collected]; },
     get zone() { return currentZone; },
+    get decor() { return decorInfo; },
     get tr3bSeen() { return tr3bSeen; },
     get tr3bState() { return tr3bState; },
     get wreckVisited() { return wreckVisited; },
@@ -1808,6 +1849,7 @@ function exposeHook() {
         url: player.charUrl, placeholder: player.charPlaceholder, finalUrl: CHARACTER_FINAL_URL,
         clips: c.clips, state: c.state, weights: c.weights, speed: player.speedCur,
         yaw: c.yaw, hidden: c.hidden, x: c.object.position.x, y: c.object.position.y, z: c.object.position.z,
+        oneShots: c.oneShots, oneShot: c.oneShot,
       } : null;
     },
     /** First meshes hit along the camera's view axis (debug: what fills the screen). */

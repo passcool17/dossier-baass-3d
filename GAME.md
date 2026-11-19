@@ -1,4 +1,4 @@
-# Dossier BAASS · 3D — v0.3.2
+# Dossier BAASS · 3D — v0.3.3
 
 - Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
@@ -14,6 +14,49 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 
 
+
+## v0.3.3 — décor, animations Pickup/Inspect, cadrage de la rampe (18 nov. 2026)
+
+Travail préparé sur le PC de Pascal (Blender + pipeline local), relecture légère et publication depuis la box, à partir de `04f5e00` (arbre propre).
+
+- Lien : https://passcool17.github.io/dossier-baass-3d/?v=SHA — `VERSION` **0.3.3**, cache SW `dossier-baass-3d-v0.3.3` seulement. `detective_v1.glb` et `decor-v1.glb` sont demandés et précachés en `?v=` + VERSION, pour qu’un ancien modèle ne soit jamais servi.
+- **Détective** : `assets/models/detective_v1.glb` (1 300 328 o, 5 052 tris, **1 appel**, meshopt + KTX2, transcodeur **local** `./vendor/basis/`). Clips Idle (3,00 s), Walk (1,13 s), Run (0,73 s), **Pickup** (1,80 s) et **Inspect** (2,50 s). À l’arrêt, une collecte joue Pickup puis Inspect (`playOnce`). Crédit : « Private Investigator (Detective) » par **Jungle Jim**, **CC BY 4.0**, https://skfb.ly/oPEIo.
+- **Cadrage de la rampe** : visée adaptative pour garder le haut du chapeau dans le cadre (≤ 80 % du demi-champ, plongée jamais plus plate que 40°) et champ de vision +12° dans le tunnel. Mesuré headless : NDC y du chapeau **0,67** en portrait et **0,68** en paysage (plus de coupe en haut).
+- **Kit de décor** : `assets/decor-v1.glb` (112 140 o, 3 062 tris, 20 accessoires, couleurs de sommet, 1 matériau, meshopt). Cactus, rochers, caisses, poteaux, éolienne, etc. Fait par le pipeline Blender du PC de Pascal, **CC0 1.0**. `buildDecor()` les disperse avec une graine fixe, loin des preuves, des départs et de la rampe, puis fusionne un maillage par zone.
+- `?fx=` et ombres inchangés (ombres off par défaut, `pixelRatio` plafonné à 2). Aucune transmission. Three.js reste chargé depuis jsDelivr (déjà en v0.3.2) ; transcodeurs KTX2 / meshopt toujours locaux.
+
+### Mesures (box, 18 nov. 2026, heure de Toronto)
+
+`tools/measure-zones.mjs`, Chrome `--use-gl=angle --use-angle=gl`, Mesa llvmpipe. **Les fps de la box ne sont pas les fps d’un Samsung S20 FE.** `/home/box/opt/perf3d/measure.mjs` est couplé à `__c204` (autre jeu) et n’a pas été utilisé ici. 0 erreur console, 0 HTTP ≥ 400.
+
+| Vue | 412×915 appels / tris | 915×412 appels / tris | JS p50 / p95 (ms) |
+|---|---:|---:|---:|
+| Ranch | 24 / 53 950 | 40 / 59 092 | 1,7 / 2,2 · 1,6 / 4,5 |
+| Hangar | 18 / 38 776 | 25 / 42 160 | — |
+| Entrée du bunker | 36 / 63 600 | 57 / **71 752** | 1,5 / 6,8 · 1,8 / 5,2 |
+| Rampe | 36 (max 40) / 59 956 | 37 (max 40) / 60 824 | 1,5 / 2,2 · 1,5 / 2,7 |
+| Laboratoire | 29 / 54 190 | 31 / 55 542 | — |
+| Labo, regard est | 33 / 56 262 | 43 / 58 118 | — |
+| Serveurs | 23 / 42 806 | 21 / 47 166 | — |
+| Classeurs | 27 / 48 050 | 40 / 50 490 | — |
+| Site de l’épave | 22 / 41 666 | 26 / 41 918 | — |
+| TR-3B (vol stationnaire) | 38 / 53 464 | **59** / 67 706 | 1,4 / 2,3 · 1,4 / 6,3 |
+
+Pire vue de cette série : **59 appels** (TR-3B, paysage) et **71 752 tris** (entrée, paysage). Tous les appels restent **sous 100**. Temps JS typique 1,4–1,8 ms (p95 jusqu’à 6,8 ms). Les fps box (environ 4–26 sous llvmpipe, selon la charge) ne remplacent pas une mesure S20 FE avec `?fps=1`.
+
+### Tests (box, lumière v8 + t-evidence)
+
+- Vérification GLB (`verify_glb.mjs`) : détective **PASS** (5 clips jouent et bougent, 5 052 tris, 1,24 Mo) ; décor **PASS** (3 062 tris, 109,5 Ko). `gltf-transform validate` : 0 erreur (avertissements KTX2 / meshopt habituels).
+- Lumière v8, 412×915 et 915×412 : boot v0.3.3, 0 erreur console, 0 HTTP ≥ 400, décor chargé (5 zones), détective final (pas le secours), Pickup → Inspect à l’arrêt, chapeau visible sur la rampe, pad 4 directions sans inversion (haut = loin de la caméra, module partagé `touch-controls`). **28/28 PASS**.
+- `tests/t-evidence.cjs` (pad seul, pas de téléportation) : atteignabilité 8/8 + partie complète jusqu’à l’écran de fin, 412×915 (304 s) et 915×412 (351 s). **40/40 PASS**.
+
+Captures : `/workspace/games3d/dossier-baass-3d-shots/v033/` (cadrage rampe portrait et paysage, décor ranch et épave, pose Pickup/Inspect, HUD 8/8).
+
+### Limites
+
+- La fiche de preuve s’ouvre à la fin de l’effet de collecte, donc elle peut masquer une partie de l’animation Inspect en jeu normal (l’enchaînement joue quand même).
+- Les notes basses déjà signalées en v0.3.2 (carte de fin qui recouvre les puces du HUD, caméra dans la soucoupe à la 8/8 en paysage, frottement de clôture au ranch) ne font pas partie de cette passe.
+- Fps S20 FE non mesurés ici.
 
 ## v0.3.2 — les huit preuves enfin atteignables (17 nov. 2026)
 
@@ -563,7 +606,8 @@ Les kits ont été téléchargés uniquement depuis les pages officielles HTTPS.
 | Camion (`truck`) | [Quaternius, Poly Pizza](https://poly.pizza/m/cXw6oiFtZ8) | CC0 1.0 |
 | Clôtures bois et métal | [Quaternius](https://poly.pizza/m/e02PFKKhbr) | CC0 1.0 |
 | Débris et papiers | [Quaternius](https://poly.pizza/m/WrIiMMxyEP) | CC0 1.0 |
-| **Détective jouable** (`assets/models/detective_v1.glb`, 1 251 716 o, 5 052 tris, 1 appel, Idle / Walk / Run, meshopt + KTX2), depuis la v0.3.0 | [« Private Investigator (Detective) » par Jungle Jim, Sketchfab](https://skfb.ly/oPEIo), adapté par Modélisation / Rig / Rendu | **CC BY 4.0** |
+| **Détective jouable** (`assets/models/detective_v1.glb`, 1 300 328 o, 5 052 tris, 1 appel, Idle / Walk / Run / Pickup / Inspect, meshopt + KTX2), depuis la v0.3.0, clips Pickup/Inspect en v0.3.3 | [« Private Investigator (Detective) » par Jungle Jim, Sketchfab](https://skfb.ly/oPEIo), adapté par Modélisation / Rig / Rendu puis le pipeline du PC de Pascal | **CC BY 4.0** |
+| **Kit de décor** (`assets/decor-v1.glb`, 112 140 o, 3 062 tris, 20 accessoires, couleurs de sommet, 1 matériau, meshopt), depuis la v0.3.3 | Pipeline Blender du PC de Pascal (`tools/decor_kit.py`) | **CC0 1.0** |
 | Détective de secours (`man-v1.glb`, Idle / Walk / Run / Standing, manteau et chapeau ajoutés) — seulement si `detective_v1.glb` ne charge pas, ou `?char=placeholder` | [Quaternius Ultimate Modular Men](https://quaternius.com/packs/ultimatemodularcharacters.html) | CC0 1.0 |
 | Soucoupe de l’épave (`ufo-v1.glb`) | [hat_my_guy, Poly Pizza](https://poly.pizza/m/NgURFR5T9m) | CC0 1.0 (Public Domain) |
 | `assets/tr3b-v1.glb` (67 456 o, 2 666 tris, 2 appels) | [TR-3B by Dylusion, Sketchfab](https://sketchfab.com/3d-models/50d8e1fdffad4f8a9064e657bda9c248), livré par Rendu | **CC BY-NC 4.0** — jeu gratuit, sans pub |

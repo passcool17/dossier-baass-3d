@@ -546,10 +546,10 @@ export function makeDesertGround(scene) {
 /* ---------- lights + atmosphere ---------- */
 export const ATMOS = {
   dusk: {
-    bg: 0x1a1020, fogN: 48, fogF: 145,
+    bg: 0x1a1028, fogN: 35, fogF: 145,
     ambC: 0xc09070, ambI: 0.36,
     hemiS: 0xffb080, hemiG: 0x2a1810, hemiI: 0.92,
-    sunC: 0xff9040, sunI: 1.35, sunP: [-70, 14, 28],
+    sunC: 0xff6020, sunI: 1.6, sunP: [-70, 8, 28],
     fillC: 0x3a5080, fillI: 0.42,
     lab1: 0, lab2: 0, door: 2.5, emer: 0.35,
   },
@@ -1385,4 +1385,148 @@ export function sanitizeMaterials(root) {
     }
   });
   return root;
+}
+
+/* ---------- v0.3.3: décor kit (Blender, assets/decor-v1.glb) ----------
+ * 20 low-poly kits, vertex colours, ONE material. Scattered per zone with a
+ * seeded RNG (same layout every run), rejected near evidence / spawn spots /
+ * the ramp and inside existing colliders, then merged into one mesh per zone
+ * (+1 draw call each; mergeStaticByMaterial may fold them into one). */
+const DECOR_CLEAR = [ // [x, z, r]: spawn spots, doors
+  [-20, 14, 2.5], [9.5, -5.5, 2.5], [36, 4, 2.5], [-11.5, 37, 2.5], [16.55, 1.85, 2.8], [22.5, 4, 2.5],
+  [19.6, 9.4, 2.5], [26.2, 4, 2.0], [40.2, 4, 2.0],
+];
+const DECOR_NO_RECTS = [ // surface keep-outs: ramp + pavilion (+margin)
+  [RAMP.x0 - 2.5, RAMP.x1 + 1, RAMP.z0 - 1.5, RAMP.z1 + 1.5], [PAVILION.x0 - 2, PAVILION.x1 + 1, PAVILION.z0 - 1.5, PAVILION.z1 + 1.5],
+];
+// kit: [collider radius (m, 0 = walk-through), height (m)]
+const DECOR_KITS = {
+  saguaro: [0.35, 3.3], 'barrel-cactus': [0, 0.6], 'prickly-pear': [0, 1.0], sage: [0, 0.6], grass: [0, 0.6],
+  rocks: [1.0, 1.3], crates: [1.1, 1.75], 'pallet-sacks': [0.7, 0.65], tyres: [0.7, 0.95], sign: [0.25, 1.85],
+  pole: [0.25, 7.6], windmill: [1.3, 7.8], hay: [1.0, 1.2], spool: [0.55, 1.1], cables: [0, 0.08],
+  hazard: [0, 0.02], 'dead-tree': [0.3, 2.9], shards: [0, 0.7], barricade: [0, 1.05], floodlight: [0.45, 4.3],
+};
+const DECOR_ZONES = [
+  { zone: 'ranch', rects: [[-41, -3, -17, 23]], items: [['sage', 10, 0.8, 1.3], ['grass', 22, 0.8, 1.4], ['barrel-cactus', 3, 0.8, 1.1],
+    ['prickly-pear', 3, 0.8, 1.2], ['hay', 2, 1, 1], ['crates', 1, 1, 1], ['dead-tree', 2, 0.9, 1.2], ['rocks', 2, 0.6, 0.9]],
+    fixed: [['windmill', -33, -9, 0.6], ['pole', -40, -21, 0], ['pole', -31, -21, 0], ['pole', -22, -21, 0],
+      ['pole', -13, -21, 0], ['pole', -4, -21, 0], ['pole', 5, -21, 0], ['pole', 14, -21, 0]] },
+  { zone: 'hangar', rects: [[-1, 17.5, -15, 25]], items: [['crates', 3, 0.9, 1.1], ['pallet-sacks', 2, 1, 1], ['tyres', 2, 1, 1],
+    ['spool', 2, 1, 1], ['grass', 10, 0.8, 1.3], ['sage', 3, 0.8, 1.1], ['barricade', 2, 1, 1]],
+    fixed: [['sign', 17.4, 8.9, -Math.PI / 2], ['sign', 17.4, -0.9, -Math.PI / 2], ['floodlight', 15.5, 10.5, -2.4]] },
+  { zone: 'wreck', rects: [[-27, 7, 29, 61]], items: [['shards', 10, 0.7, 1.3], ['rocks', 4, 0.8, 1.4], ['sage', 5, 0.8, 1.2],
+    ['grass', 12, 0.8, 1.4], ['saguaro', 3, 0.9, 1.15], ['dead-tree', 2, 0.9, 1.2]],
+    ring: { kit: 'barricade', x: -8, z: 45, r: 12.5, n: 7, face: true }, fixed: [['floodlight', -17.5, 52.5, 'face'], ['floodlight', 2.5, 53, 'face']] },
+  { zone: 'outskirts', rects: [[-62, 68, 73, 96], [-62, 68, -50, -31], [-80, -56, -30, 72], [63, 82, -30, 72]],
+    items: [['saguaro', 16, 1.1, 1.6], ['rocks', 8, 1.0, 2.4], ['sage', 6, 1, 1.5], ['prickly-pear', 4, 1, 1.4],
+      ['barrel-cactus', 4, 1, 1.3], ['dead-tree', 4, 1, 1.4], ['grass', 10, 1, 1.5]], noCollide: true },
+  { zone: 'lab', y: LAB_Y, rects: [[43.2, 58.8, -1.1, 9.0], [45.2, 54.8, 11.2, 20.8]], items: [['spool', 2, 0.9, 1], ['crates', 1, 0.7, 0.7]],
+    furn: true, fixed: [['cables', 33, 0.75, 0], ['cables', 33, 7.25, 0], ['cables', 51, -1.5, 0], ['cables', 50, 21.5, 0],
+      ['hazard', 26.9, 4, Math.PI / 2], ['hazard', 40.95, 4, Math.PI / 2], ['hazard', 50, 10.05, 0]] },
+];
+
+function decorRng(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function decorF32(g) {
+  const out = new THREE.BufferGeometry();
+  for (const [name, n] of [['position', 3], ['normal', 3], ['color', 3]]) {
+    const a = g.getAttribute(name);
+    if (!a) continue;
+    const arr = new Float32Array(a.count * n);
+    for (let i = 0; i < a.count; i++) { arr[i * n] = a.getX(i); arr[i * n + 1] = a.getY(i); arr[i * n + 2] = a.getZ(i); }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, n));
+  }
+  if (!out.getAttribute('color')) {
+    const c = new Float32Array(out.getAttribute('position').count * 3).fill(0.7);
+    out.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  }
+  if (g.index) out.setIndex(Array.from(g.index.array));
+  else out.setIndex([...Array(out.getAttribute('position').count).keys()]);
+  return out;
+}
+
+/** @returns {{ meshes: Object<string, THREE.Mesh>, stats: Object<string, {items, tris, solids}> }} */
+export function buildDecor(scene, gltf, { addSolid = () => {}, isFree = () => true, keepClear = [] } = {}) {
+  const kits = {};
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh || !/^kit_/.test(o.name)) return;
+    const g = decorF32(o.geometry);
+    g.applyMatrix4(o.matrixWorld);
+    kits[o.name.slice(4)] = g;
+  });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+  mat.name = 'decor-vc';
+  const clear = DECOR_CLEAR.concat(keepClear);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const meshes = {}, stats = {};
+  DECOR_ZONES.forEach((Z, zi) => {
+    const rnd = decorRng(20261118 + zi * 7919);
+    const y = Z.y != null ? Z.y : 0;
+    const placed = [], geos = [];
+    let nSolids = 0;
+    const ok = (x, z, rad, fixedFlat) => {
+      if (Z.zone !== 'lab' && DECOR_NO_RECTS.some((r) => x > r[0] && x < r[1] && z > r[2] && z < r[3])) return false;
+      if (clear.some(([cx, cz, cr]) => Math.hypot(x - cx, z - cz) < cr + rad)) return false;
+      if (placed.some((p) => Math.hypot(x - p.x, z - p.z) < p.rad + rad + 0.4)) return false;
+      return (Z.noCollide || fixedFlat) ? true : isFree(x, z, rad + 0.5);
+    };
+    const put = (kit, x, z, ry, s, fixed = false) => {
+      const g0 = kits[kit];
+      if (!g0) return false;
+      const [cr, h] = DECOR_KITS[kit] || [0, 1];
+      const rad = Math.max(cr, 0.3) * s;
+      // fixed walk-through floor pieces (cables, stripes) may hug walls
+      if (!ok(x, z, rad, fixed && cr === 0 && h < 0.1)) return false;
+      const g = g0.clone();
+      m4.compose(new THREE.Vector3(x, y, z), q.setFromAxisAngle(up, ry), new THREE.Vector3(s, s, s));
+      g.applyMatrix4(m4);
+      geos.push(g);
+      placed.push({ x, z, rad });
+      if (cr > 0 && !Z.noCollide) {
+        const r = cr * s;
+        const sol = { minx: x - r, maxx: x + r, minz: z - r, maxz: z + r, miny: y, maxy: y + h * s, decor: true };
+        if (Z.furn) sol.furn = true;
+        addSolid(sol); nSolids++;
+      }
+      return true;
+    };
+    const faceRy = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
+    for (const [kit, x, z, ry] of Z.fixed || []) {
+      // nudge up to 3 times along X if the exact spot is taken
+      for (const dx of [0, 1.5, -1.5, 3]) {
+        const r = ry === 'face' ? faceRy(x + dx, z, -8, 45) : ry;
+        if (put(kit, x + dx, z, r, 1, true)) break;
+      }
+    }
+    if (Z.ring) {
+      const R = Z.ring;
+      for (let i = 0; i < R.n; i++) {
+        const a = (i / R.n) * Math.PI * 2 + 0.3;
+        const x = R.x + Math.cos(a) * R.r, z = R.z + Math.sin(a) * R.r;
+        put(R.kit, x, z, faceRy(x, z, R.x, R.z), 1);
+      }
+    }
+    for (const [kit, count, s0, s1] of Z.items) {
+      let n = 0;
+      for (let t = 0; t < count * 25 && n < count; t++) {
+        const rc = Z.rects[Math.floor(rnd() * Z.rects.length)];
+        const x = rc[0] + rnd() * (rc[1] - rc[0]), z = rc[2] + rnd() * (rc[3] - rc[2]);
+        if (put(kit, x, z, rnd() * Math.PI * 2, s0 + rnd() * (s1 - s0))) n++;
+      }
+    }
+    if (!geos.length) return;
+    const merged = mergeGeometries(geos, false);
+    if (!merged) return;
+    merged.computeBoundingSphere();
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.name = 'decor-' + Z.zone;
+    mesh.castShadow = false; mesh.receiveShadow = false;
+    scene.add(mesh);
+    meshes[Z.zone] = mesh;
+    stats[Z.zone] = { items: placed.length, tris: merged.index.count / 3, solids: nSolids };
+  });
+  return { meshes, stats };
 }

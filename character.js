@@ -210,6 +210,34 @@ export function createCharacter(gltf, { placeholder = CHARACTER.placeholder, cfg
     walk: actions.walk ? 'walk' : (actions.run ? 'run' : (actions.idle ? 'idle' : null)),
     run: actions.run ? 'run' : (actions.walk ? 'walk' : (actions.idle ? 'idle' : null)),
   };
+  // v0.3.3: one-shot clips from the final detective (Pickup: crouch and grab,
+  // Inspect: look at the item), blended over the locomotion. The placeholder
+  // has none, so playOnce() is then a no-op.
+  const ONE_SHOT = { pickup: /(^|[|_\s.:-])(pickup|search)$/i, inspect: /(^|[|_\s.:-])inspect$/i };
+  const once = {};
+  for (const [k, re] of Object.entries(ONE_SHOT)) {
+    const c = (gltf.animations || []).find((a) => re.test(a.name));
+    if (!c) continue;
+    const a = mixer.clipAction(c);
+    a.setLoop(THREE.LoopOnce, 1);
+    a.clampWhenFinished = true;
+    once[k] = a;
+  }
+  const SHOT_FADE = 0.2;
+  let shot = null, shotT = 0, shotW = 0, shotOut = false, shotQueue = [];
+  function startShot(k) {
+    shot = once[k]; shotT = 0; shotOut = false;
+    shot.reset(); shot.enabled = true; shot.setEffectiveTimeScale(1); shot.setEffectiveWeight(shotW); shot.play();
+  }
+  /** Play one-shot clips in sequence, e.g. playOnce('pickup', 'inspect'). false if none exists. */
+  function playOnce(...names) {
+    const list = names.filter((n) => once[n]);
+    if (!list.length || hidden) return false;
+    if (shot) shot.stop();
+    shotQueue = list.slice(1);
+    startShot(list[0]);
+    return true;
+  }
   const cur = { idle: 1, walk: 0, run: 0 };
   let yaw = 0;
   let state = 'idle';
@@ -225,6 +253,20 @@ export function createCharacter(gltf, { placeholder = CHARACTER.placeholder, cfg
     if (actions.walk) actions.walk.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / cfg.clipWalkSpeed, 0.7, 1.6));
     if (actions.run) actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / cfg.clipRunSpeed, 0.75, 1.3));
     state = tgt.run > 0.5 ? 'run' : (tgt.walk > 0.5 ? 'walk' : (tgt.idle >= 0.5 ? 'idle' : 'walk'));
+    if (shot) {
+      shotT += dt;
+      const dur = shot.getClip().duration;
+      if (speed > 0.8) { shotOut = true; shotQueue = []; } // moving again: fade out
+      // Chained clips start and end on the same Idle pose: no fade between them.
+      const end = shotOut || (!shotQueue.length && shotT >= dur - SHOT_FADE);
+      shotW = THREE.MathUtils.clamp(shotW + (end ? -dt : dt) / SHOT_FADE, 0, 1);
+      shot.setEffectiveWeight(shotW);
+      for (const n of Object.keys(actions)) actions[n].setEffectiveWeight(actions[n].getEffectiveWeight() * (1 - shotW));
+      if (shotT >= dur || (shotOut && shotW <= 0)) {
+        shot.stop(); shot = null;
+        if (shotQueue.length) startShot(shotQueue.shift()); else shotW = 0;
+      }
+    }
     mixer.update(dt);
   }
 
@@ -245,6 +287,9 @@ export function createCharacter(gltf, { placeholder = CHARACTER.placeholder, cfg
     clips: Object.fromEntries(Object.entries(clips).map(([k, c]) => [k, c ? c.name : null])),
     update,
     setPose,
+    playOnce,
+    oneShots: Object.keys(once),
+    get oneShot() { return shot ? shot.getClip().name : null; },
     setHidden(b) { if (b !== hidden) { hidden = b; model.visible = !b; } },
     get hidden() { return hidden; },
     get yaw() { return yaw; },

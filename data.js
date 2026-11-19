@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.3.2';
+export const VERSION = '0.3.3';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -203,7 +203,14 @@ export const CREDITS = [
     author: 'Jungle Jim',
     license: 'CC BY 4.0',
     url: 'https://skfb.ly/oPEIo',
-    note: 'Détective jouable (Sketchfab), allégé pour mobile : 5 052 triangles, animations Idle, Walk et Run. Si le fichier ne charge pas, le jeu montre un détective de secours (« Man » de Quaternius, CC0, avec manteau et chapeau ajoutés).',
+    note: 'Détective jouable (Sketchfab), allégé pour mobile : 5 052 triangles, animations Idle, Walk, Run, Pickup et Inspect. Si le fichier ne charge pas, le jeu montre un détective de secours (« Man » de Quaternius, CC0, avec manteau et chapeau ajoutés).',
+  },
+  {
+    name: 'Kit de décor (cactus, rochers, caisses, poteaux, éolienne…)',
+    author: 'Dossier BAASS 3D (pipeline Blender sur le PC de Pascal)',
+    license: 'CC0 1.0',
+    url: '',
+    note: 'assets/decor-v1.glb — 20 accessoires, couleurs de sommet, maillages fusionnés par zone. Fait pour le jeu, aucune transmission.',
   },
   {
     name: 'Ultimate Modular Men Pack (personnage « Man »)',

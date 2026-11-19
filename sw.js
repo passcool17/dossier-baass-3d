@@ -66,6 +66,7 @@ const PRECACHE = [
   './character.js?v=' + VERSION,
   './camgrid.js?v=' + VERSION,
   './assets/models/detective_v1.glb?v=' + VERSION,
+  './assets/decor-v1.glb?v=' + VERSION,
   './assets/sfx/ui_click.ogg',
   './assets/sfx/ui_open.ogg',
   './assets/sfx/pickup.ogg',
