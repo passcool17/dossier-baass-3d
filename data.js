@@ -6,7 +6,7 @@
    Rien n’est présenté comme une preuve. L’histoire du jeu est une fiction.
 */
 
-export const VERSION = '0.3.3';
+export const VERSION = '0.3.4';
 
 export const SAVE_KEY = 'baass.dossier3d.v1';
 export const SETTINGS_KEY = 'baass.dossier3d.settings.v1';
@@ -211,6 +211,13 @@ export const CREDITS = [
     license: 'CC0 1.0',
     url: '',
     note: 'assets/decor-v1.glb — 20 accessoires, couleurs de sommet, maillages fusionnés par zone. Fait pour le jeu, aucune transmission.',
+  },
+  {
+    name: 'Maison du ranch',
+    author: 'Dossier BAASS 3D (pipeline Hunyuan3D + Blender sur le PC de Pascal)',
+    license: 'Création du jeu — pipeline Hunyuan3D sur le PC de Pascal',
+    url: '',
+    note: 'assets/ranch-house-v1.glb — 78 744 o, 2 898 triangles, 1 matériau, couleurs de sommet, 1 appel de dessin, meshopt. Placée à l’ouest de la grange, porche vers l’aire de jeu.',
   },
   {
     name: 'Ultimate Modular Men Pack (personnage « Man »)',

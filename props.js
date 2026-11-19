@@ -115,6 +115,12 @@ export const PROPS = {
   tr3b: { file: 'assets/tr3b-v1.glb', author: 'Dylusion', license: 'CC BY-NC 4.0' },
   // v0.3.3: our own Blender décor kit (cacti, rocks, crates, poles, windpump…), vertex colours.
   decor: { file: 'assets/decor-v1.glb', author: 'Dossier BAASS 3D (Blender)', license: 'CC0 1.0' },
+  // v0.3.4: ranch house (Hunyuan3D + Blender on Pascal's PC), vertex colours, meshopt.
+  'ranch-house': {
+    file: 'assets/ranch-house-v1.glb',
+    author: 'Dossier BAASS 3D (pipeline Hunyuan3D + Blender sur le PC de Pascal)',
+    license: 'Création du jeu — pipeline Hunyuan3D sur le PC de Pascal',
+  },
 };
 
 export function propUrl(name) {

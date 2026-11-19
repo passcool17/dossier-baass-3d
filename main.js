@@ -1,4 +1,4 @@
-/* Dossier BAASS 3D v0.3.3 — Three.js r170. */
+/* Dossier BAASS 3D v0.3.4 — Three.js r170. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -365,9 +365,10 @@ async function loadWithRetry(url, tries = 4) {
 async function loadGLB(name) {
   if (gltfCache.has(name)) return gltfCache.get(name);
   const url = propUrl(name);
-  // Versioned query for the décor kit (same pattern as the detective) so a
-  // cached older decor-v1.glb can never be served after a VERSION bump.
-  const gltf = await loadWithRetry(name === 'decor' ? url + '?v=' + VERSION : url);
+  // Versioned query for the décor kit and ranch house (same pattern as the
+  // detective) so a cached older GLB can never be served after a VERSION bump.
+  const versioned = name === 'decor' || name === 'ranch-house';
+  const gltf = await loadWithRetry(versioned ? url + '?v=' + VERSION : url);
   gltfCache.set(name, gltf);
   return gltf;
 }
@@ -1165,6 +1166,13 @@ async function buildWorld(onProg) {
   const S = 8; // Kenney industrial scale (kit is "toy" sized)
   // —— Ranch ——
   placeGLB(loaded.barn, { x: -24, z: 0, ry: 0, name: 'barn', collide: true });
+  // v0.3.4: ranch house west of the red barn. Porch is +Z in the GLB; ry 0
+  // faces the play area north of the barn (same way as the barn doors).
+  // Gap to barn ~0.72 m, to the west fence (~x -36, thickness 0.17 m) ~0.50 m.
+  try {
+    const house = await loadGLB('ranch-house');
+    placeGLB(house, { x: -32, z: 0, ry: 0, name: 'ranch-house', collide: true });
+  } catch (e) { console.warn('ranch-house unavailable', e && e.message); }
   placeGLB(loaded.shed, { x: -13, z: 8, ry: 0.4, scale: 4.2, name: 'shed', collide: true });
   placeGLB(loaded.truck, { x: -12, z: -9, ry: Math.PI * 0.6, name: 'truck', collide: true });
 
@@ -1835,6 +1843,19 @@ function exposeHook() {
     get collected() { return [...collected]; },
     get zone() { return currentZone; },
     get decor() { return decorInfo; },
+    /** AABB + pose of a named scene object (tests: ranch-house placement). */
+    objectBox(name) {
+      const o = scene.getObjectByName(name);
+      if (!o) return null;
+      o.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(o);
+      return {
+        x: +o.position.x.toFixed(3), y: +o.position.y.toFixed(3), z: +o.position.z.toFixed(3),
+        ry: +o.rotation.y.toFixed(4),
+        min: [+b.min.x.toFixed(3), +b.min.y.toFixed(3), +b.min.z.toFixed(3)],
+        max: [+b.max.x.toFixed(3), +b.max.y.toFixed(3), +b.max.z.toFixed(3)],
+      };
+    },
     get tr3bSeen() { return tr3bSeen; },
     get tr3bState() { return tr3bState; },
     get wreckVisited() { return wreckVisited; },
