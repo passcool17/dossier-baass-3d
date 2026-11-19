@@ -1,9 +1,9 @@
 # Dossier BAASS · 3D — v0.3.3
 
-- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=22ce604
+- Lien jouable : https://passcool17.github.io/dossier-baass-3d/?v=0905db0
 - Dépôt : https://github.com/passcool17/dossier-baass-3d
-- Commit : `22ce6042596c50a410ba89ae3ca9bfd424e82032` (22ce604), 13 novembre 2026 (heure de Toronto). La v0.2.4 était `17725238122ab9fd602dae11ff169b3a4f1b0707` (1772523), docs `658c7d5`. La v0.2.3 était `a396e5e`, docs `417fd16`.
-- État : v0.2.5 — le regard (glisser un doigt, souris, stick droit) tourne enfin dans le bon sens ; la rampe cadre la porte du laboratoire et le bandeau dit « Rampe ». Module partagé touch-controls **1.0.1**. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
+- Commit jeu : `0905db0756fd462d560ffb426fc335a3a784c80e` (0905db0), 18 novembre 2026 (heure de Toronto). Base v0.3.2 : `04f5e005f04469475bff9bea1b195c1051b589e2`.
+- État : v0.3.3 — kit de décor, animations Pickup/Inspect, cadrage du chapeau sur la rampe. Enquêteur fictif sur un site secret (ranch, hangar, bunker, site d’épave). Huit preuves, chacune un extrait réel du *BAASS Project Management Plan* (2 décembre 2008, DOW-UAP-D168). Survol du TR-3B (modèle de Dylusion) au-dessus du hangar, épave d’une soucoupe liée aux citations Roswell 1947 réellement présentes dans la source (page PDF 45). Interface en français.
 
 Bandeau permanent : **plan de recherche, pas une preuve ; histoire fictive**.
 
@@ -19,7 +19,7 @@ Ceci est un **jeu**. Le document source est un plan de gestion de recherche, pas
 
 Travail préparé sur le PC de Pascal (Blender + pipeline local), relecture légère et publication depuis la box, à partir de `04f5e00` (arbre propre).
 
-- Lien : https://passcool17.github.io/dossier-baass-3d/?v=SHA — `VERSION` **0.3.3**, cache SW `dossier-baass-3d-v0.3.3` seulement. `detective_v1.glb` et `decor-v1.glb` sont demandés et précachés en `?v=` + VERSION, pour qu’un ancien modèle ne soit jamais servi.
+- Lien : https://passcool17.github.io/dossier-baass-3d/?v=0905db0 — `VERSION` **0.3.3**, cache SW `dossier-baass-3d-v0.3.3` seulement. `detective_v1.glb` et `decor-v1.glb` sont demandés et précachés en `?v=` + VERSION, pour qu’un ancien modèle ne soit jamais servi.
 - **Détective** : `assets/models/detective_v1.glb` (1 300 328 o, 5 052 tris, **1 appel**, meshopt + KTX2, transcodeur **local** `./vendor/basis/`). Clips Idle (3,00 s), Walk (1,13 s), Run (0,73 s), **Pickup** (1,80 s) et **Inspect** (2,50 s). À l’arrêt, une collecte joue Pickup puis Inspect (`playOnce`). Crédit : « Private Investigator (Detective) » par **Jungle Jim**, **CC BY 4.0**, https://skfb.ly/oPEIo.
 - **Cadrage de la rampe** : visée adaptative pour garder le haut du chapeau dans le cadre (≤ 80 % du demi-champ, plongée jamais plus plate que 40°) et champ de vision +12° dans le tunnel. Mesuré headless : NDC y du chapeau **0,67** en portrait et **0,68** en paysage (plus de coupe en haut).
 - **Kit de décor** : `assets/decor-v1.glb` (112 140 o, 3 062 tris, 20 accessoires, couleurs de sommet, 1 matériau, meshopt). Cactus, rochers, caisses, poteaux, éolienne, etc. Fait par le pipeline Blender du PC de Pascal, **CC0 1.0**. `buildDecor()` les disperse avec une graine fixe, loin des preuves, des départs et de la rampe, puis fusionne un maillage par zone.
